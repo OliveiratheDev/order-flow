@@ -1,0 +1,9 @@
+spring:
+  datasource:
+    url: jdbc:postgresql://localhost:5433/orderflow
+    username: orderflow
+    password: orderflow
+  data:
+    redis:
+      host: localhost
+      port: 6380
