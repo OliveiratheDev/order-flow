@@ -15,7 +15,7 @@
 
 ### 2. Rodar a aplicação
 
-`nmvn spring:boot:run "Dspring-boot.run.profiles=dev`
+`nmvn spring:boot:run "-Dspring-boot.run.profiles=dev`
 
 ## Estrutura do projeto
 - `catalog` -> produtos e categorias (arquitetura em camada)
