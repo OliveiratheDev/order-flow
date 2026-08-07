@@ -9,7 +9,7 @@ public record CategoryResponse(
         String slug,
         String description,
         Boolean active,
-        LocalDateTime createAt234
+        LocalDateTime createdAt
 ) {
 
 }
