@@ -1,7 +1,4 @@
 package com.start.overflow.catalog.dto;
-
-
-import java.time.LocalDateTime;
 import java.util.List;
 
 public record PagedResponse<T>(
@@ -9,6 +6,6 @@ public record PagedResponse<T>(
         int page,
         int size,
         long totalElements,
-        int totaPages
+        int totalPages
 ) {}
 
