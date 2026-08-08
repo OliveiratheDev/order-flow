@@ -1,7 +1,5 @@
-package com.orderflow.shared.error;
+package com.start.overflow.shared.exception;
 
-import com.start.overflow.shared.exception.BusinessRuleException;
-import com.start.overflow.shared.exception.ResourceNotFoundException;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.ConstraintViolationException;
 import org.slf4j.MDC;
