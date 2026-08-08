@@ -4,6 +4,8 @@ import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.ConstraintViolationException;
 import org.slf4j.MDC;
 import org.springframework.dao.DataIntegrityViolationException;
+import org.springframework.orm.ObjectOptimisticLockingFailureException;
+import org.springframework.security.core.AuthenticationException;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ProblemDetail;
 import org.springframework.http.converter.HttpMessageNotReadableException;
@@ -34,6 +36,12 @@ public class GlobalExceptionHandler {
     public ProblemDetail handleBusinessRule(BusinessRuleException ex, HttpServletRequest request) {
         return buildProblemDetail(HttpStatus.CONFLICT, "/errors/business-rule",
                 "Regra de negócio violada", ex.getMessage(), request);
+    }
+
+    @ExceptionHandler(ValidationException.class)
+    public ProblemDetail handleDomainValidation(ValidationException ex, HttpServletRequest request) {
+        return buildProblemDetail(HttpStatus.BAD_REQUEST, "/errors/validation",
+                "Erro de validação", ex.getMessage(), request);
     }
 
     @ExceptionHandler(MethodArgumentNotValidException.class)
@@ -86,12 +94,29 @@ public class GlobalExceptionHandler {
                 "Conflito ao salvar", "O registro conflita com dados já existentes", request);
     }
 
+    @ExceptionHandler(ObjectOptimisticLockingFailureException.class)
+    public ProblemDetail handleOptimisticLock(ObjectOptimisticLockingFailureException ex,
+                                               HttpServletRequest request) {
+        return buildProblemDetail(HttpStatus.CONFLICT, "/errors/concurrent-update",
+                "Conflito de atualização",
+                "O recurso foi alterado por outra operação. Recarregue os dados e tente novamente.", request);
+    }
+
+    @ExceptionHandler(AuthenticationException.class)
+    public ProblemDetail handleAuthentication(AuthenticationException ex, HttpServletRequest request) {
+        return buildProblemDetail(HttpStatus.UNAUTHORIZED, "/errors/unauthorized",
+                "Credenciais inválidas", "Credenciais inválidas", request);
+    }
+
     @ExceptionHandler(Exception.class)
     public ProblemDetail handleGeneric(Exception ex, HttpServletRequest request) {
         String traceId = UUID.randomUUID().toString().substring(0, 12);
-        MDC.put("traceId", traceId);
-        log.error("Erro não tratado [traceId={}]", traceId, ex);
-        MDC.remove("traceId");
+        try {
+            MDC.put("traceId", traceId);
+            log.error("Erro não tratado [traceId={}]", traceId, ex);
+        } finally {
+            MDC.remove("traceId");
+        }
 
         return buildProblemDetail(HttpStatus.INTERNAL_SERVER_ERROR, "/errors/internal",
                 "Erro interno",

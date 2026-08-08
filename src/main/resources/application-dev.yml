@@ -1,0 +1,21 @@
+spring:
+  datasource:
+    url: jdbc:postgresql://localhost:5433/orderflow
+    username: orderflow
+    password: orderflow
+  data:
+    redis:
+      host: localhost
+      port: 6380
+
+orderflow:
+  bootstrap:
+    admin:
+      enabled: true
+      name: Local Administrator
+      email: admin@orderflow.local
+      password: ${BOOTSTRAP_ADMIN_PASSWORD}
+
+logging:
+  level:
+    com.start.overflow: INFO
