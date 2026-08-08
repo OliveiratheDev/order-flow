@@ -1,6 +1,7 @@
 package com.start.overflow.catalog.entity;
 
 import jakarta.persistence.*;
+import jakarta.validation.constraints.NotBlank;
 import lombok.Getter;
 
 import java.text.Normalizer;
@@ -13,7 +14,9 @@ public class Category {
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
+    @NotBlank
     private String name;
+    @NotBlank
     private String slug;
     private String description;
     private Boolean active;
@@ -56,4 +59,9 @@ public class Category {
         this.name = newName;
         this.slug = gerarSlug(newName);
     }
+
+    public void updateDescription(String newDescription) {
+        this.description = newDescription;
+    }
+
 }
