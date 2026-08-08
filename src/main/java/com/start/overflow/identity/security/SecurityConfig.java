@@ -49,7 +49,7 @@ public class SecurityConfig {
                         .permitAll()
                         .requestMatchers("/api/v1/categories/**", "/api/v1/products/**")
                         .hasRole("ADMIN")
-                        .requestMatchers(HttpMethod.PATCH, "/api/v1/orders/*/ship", "/api/v1/orders/*/complete")
+                        .requestMatchers(HttpMethod.PATCH, "/api/v1/orders/*/ship", "/api/v1/orders/*/deliver")
                         .hasRole("ADMIN")
                         .requestMatchers(HttpMethod.PATCH, "/api/v1/payments/*/approve", "/api/v1/payments/*/reject")
                         .hasRole("ADMIN")

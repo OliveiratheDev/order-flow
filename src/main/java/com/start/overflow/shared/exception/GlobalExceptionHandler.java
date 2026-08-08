@@ -38,6 +38,13 @@ public class GlobalExceptionHandler {
                 "Regra de negócio violada", ex.getMessage(), request);
     }
 
+    @ExceptionHandler(InvalidTransitionException.class)
+    public ProblemDetail handleInvalidTransition(InvalidTransitionException ex,
+                                                  HttpServletRequest request) {
+        return buildProblemDetail(HttpStatus.UNPROCESSABLE_ENTITY, "/errors/invalid-transition",
+                "Transição de estado inválida", ex.getMessage(), request);
+    }
+
     @ExceptionHandler(ValidationException.class)
     public ProblemDetail handleDomainValidation(ValidationException ex, HttpServletRequest request) {
         return buildProblemDetail(HttpStatus.BAD_REQUEST, "/errors/validation",
