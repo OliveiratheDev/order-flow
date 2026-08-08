@@ -14,6 +14,8 @@ public interface CategoryRepository extends JpaRepository<Category, Long> {
 
     boolean existsBySlug(String slug);
 
+    boolean existsBySlugAndIdNot(String slug, Long id);
+
     @Query(""" 
             SELECT c FROM Category c
             WHERE (:name IS NULL OR LOWER (c.name) LIKE LOWER(CONCAT('%', :name, '%')))
