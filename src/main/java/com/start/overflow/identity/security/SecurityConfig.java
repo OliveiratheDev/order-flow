@@ -51,8 +51,6 @@ public class SecurityConfig {
                         .hasRole("ADMIN")
                         .requestMatchers(HttpMethod.PATCH, "/api/v1/orders/*/ship", "/api/v1/orders/*/deliver")
                         .hasRole("ADMIN")
-                        .requestMatchers(HttpMethod.PATCH, "/api/v1/payments/*/approve", "/api/v1/payments/*/reject")
-                        .hasRole("ADMIN")
                         .anyRequest().authenticated())
                 .exceptionHandling(exceptions -> exceptions
                         .authenticationEntryPoint(authenticationEntryPoint)
