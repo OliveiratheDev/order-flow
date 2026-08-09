@@ -2,6 +2,7 @@ package com.start.overflow.shared.messaging;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.amqp.AmqpRejectAndDontRequeueException;
 import org.springframework.amqp.core.Binding;
 import org.springframework.amqp.core.BindingBuilder;
 import org.springframework.amqp.core.DirectExchange;
@@ -10,7 +11,9 @@ import org.springframework.amqp.core.QueueBuilder;
 import org.springframework.amqp.core.TopicExchange;
 import org.springframework.amqp.rabbit.core.RabbitTemplate;
 import org.springframework.amqp.support.converter.JacksonJsonMessageConverter;
+import org.springframework.amqp.support.converter.MessageConversionException;
 import org.springframework.amqp.support.converter.MessageConverter;
+import org.springframework.boot.amqp.autoconfigure.RabbitListenerRetrySettingsCustomizer;
 import org.springframework.beans.factory.SmartInitializingSingleton;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.context.annotation.Bean;
@@ -88,6 +91,12 @@ public class RabbitMessagingConfig {
     }
 
     @Bean
+    RabbitListenerRetrySettingsCustomizer rabbitListenerRetrySettingsCustomizer() {
+        return settings -> settings.setExceptionPredicate(
+                RabbitMessagingConfig::isRetryable);
+    }
+
+    @Bean
     SmartInitializingSingleton rabbitPublisherCallbacks(RabbitTemplate rabbitTemplate) {
         return () -> {
             rabbitTemplate.setConfirmCallback((correlation, acknowledged, cause) -> {
@@ -112,5 +121,21 @@ public class RabbitMessagingConfig {
                 .deadLetterExchange(RabbitTopology.ORDER_EVENTS_DLX)
                 .deadLetterRoutingKey(RabbitTopology.DEAD_LETTER_ROUTING_KEY)
                 .build();
+    }
+
+    private static boolean isRetryable(Throwable failure) {
+        Throwable current = failure;
+        while (current != null) {
+            if (current instanceof AmqpRejectAndDontRequeueException
+                    || current instanceof MessageConversionException
+                    || current instanceof org.springframework.messaging.converter.MessageConversionException) {
+                return false;
+            }
+            if (current == current.getCause()) {
+                break;
+            }
+            current = current.getCause();
+        }
+        return true;
     }
 }
