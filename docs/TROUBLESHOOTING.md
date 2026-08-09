@@ -117,7 +117,20 @@ ASAAS_BASE_URL=https://api-sandbox.asaas.com/v3
 ```
 
 Uma resposta pendente é normal para PIX e boleto: use o campo `paymentUrl` devolvido pela API.
-A confirmação assíncrona depende do webhook da demanda OF-041.
+A confirmação assíncrona ocorre pelo webhook Asaas configurado para a URL pública da API.
+
+## Webhook Asaas retorna 401
+
+Confirme que o token configurado no Asaas é exatamente o mesmo de `ASAAS_WEBHOOK_TOKEN`.
+Não use `ASAAS_API_KEY`, `Authorization: Bearer` ou o JWT do cliente nesse endpoint. O header
+esperado é `asaas-access-token`.
+
+## Webhook fica `FAILED`
+
+Consulte `webhook_event_log` sem copiar o payload para logs ou chamados não protegidos.
+Falha com resposta HTTP 500 é transitória e permite retry do mesmo `event_id`. Resposta 200
+com status `RECONCILIATION_REQUIRED` indica divergência de valor/referência ou transição
+impossível; esse caso exige análise manual e será automatizado pela OF-043.
 
 ## Caracteres acentuados aparecem incorretamente no PowerShell
 

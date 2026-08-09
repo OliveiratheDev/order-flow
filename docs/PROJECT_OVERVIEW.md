@@ -27,6 +27,10 @@ sequenceDiagram
     Gateway-->>API: pendente, aprovada ou recusada + URL
     API->>DB: persiste pagamento e atualiza pedido
     API-->>Cliente: resultado da cobrança
+    Gateway->>API: POST /webhooks/asaas + token
+    API->>DB: deduplica evento e bloqueia pagamento
+    API->>DB: transiciona pagamento e pedido
+    API-->>Gateway: 200 processado/duplicado
 ```
 
 ## Fronteiras dos módulos
@@ -100,6 +104,7 @@ O schema é propriedade do Flyway e o Hibernate executa apenas `validate`. As mi
 | V3 | pedidos, itens, estados e versionamento |
 | V4 | pagamentos e unicidade por pedido |
 | V5 | CPF/CNPJ de cobrança do cliente e URL externa do pagamento |
+| V6 | auditoria/deduplicação de webhooks e status de pagamento estornado |
 
 `spring.jpa.open-in-view=false` força o carregamento necessário dentro do service e evita
 consultas acidentais durante a serialização. Relações são lazy; queries específicas e batching
@@ -171,6 +176,18 @@ desta baseline.
 Profiles de gateway complementam o profile de ambiente, por exemplo
 `SPRING_PROFILES_ACTIVE=docker,payment-asaas` no Sandbox ou
 `SPRING_PROFILES_ACTIVE=prod,payment-asaas` em produção.
+
+## Webhook financeiro
+
+O endpoint `POST /api/v1/webhooks/asaas` é público apenas no sentido de não exigir JWT:
+ele compara em tempo constante o header `asaas-access-token` com
+`ASAAS_WEBHOOK_TOKEN`. O corpo é lido como bytes antes da desserialização e persistido em
+`webhook_event_log.payload` (`JSONB`).
+
+O Template Method final controla autenticação, registro, deduplicação, transação e
+auditoria; handlers de confirmação, recusa e estorno implementam somente parse/processamento.
+A constraint única de `event_id` protege inclusive entregas concorrentes. Valor e
+`externalReference` são comparados com o pagamento local antes de qualquer transição.
 
 ## Estratégia de testes
 

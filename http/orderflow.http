@@ -6,6 +6,7 @@
 @adminEmail = admin@orderflow.local
 @adminPassword = LocalAdmin123!
 @idempotencyKey = demo-order-001
+@asaasWebhookToken = substitua-pelo-token-do-seu-env
 
 ### 1. Health check
 GET http://localhost:8080/actuator/health
@@ -104,6 +105,7 @@ X-Correlation-Id: demo-create-order
 
 > {%
     client.global.set("orderId", response.body.id);
+    client.global.set("orderTotal", response.body.total);
 %}
 
 ### 9. Repetir exatamente o pedido — retorna 200 e o mesmo corpo
@@ -137,12 +139,31 @@ X-Correlation-Id: demo-create-payment
 > {%
     client.global.set("paymentId", response.body.id);
     client.global.set("paymentUrl", response.body.paymentUrl);
+    client.global.set("paymentExternalId", response.body.externalId);
 %}
 
 ### 11. Consultar pagamento
 GET {{baseUrl}}/payments/{{paymentId}}
 Authorization: Bearer {{customerToken}}
 X-Correlation-Id: demo-get-payment
+
+### 11.1 Confirmar pagamento pelo webhook (somente com profile payment-asaas)
+POST {{baseUrl}}/webhooks/asaas
+Content-Type: application/json
+asaas-access-token: {{asaasWebhookToken}}
+X-Correlation-Id: demo-asaas-webhook
+
+{
+  "id": "evt_demo_payment_received_001",
+  "event": "PAYMENT_RECEIVED",
+  "dateCreated": "2026-08-09 18:00:00",
+  "payment": {
+    "object": "payment",
+    "id": "{{paymentExternalId}}",
+    "value": {{orderTotal}},
+    "externalReference": "orderflow-order-{{orderId}}"
+  }
+}
 
 ### 12. Enviar pedido como administrador
 PATCH {{baseUrl}}/orders/{{orderId}}/ship

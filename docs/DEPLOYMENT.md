@@ -56,6 +56,20 @@ O adapter envia a chave no header `access_token`, identifica a aplicação por `
 reutiliza o cliente pelo `externalReference`, persiste a URL da fatura e cancela a cobrança
 remota quando o pagamento local é cancelado. CPF/CNPJ é obrigatório no cadastro de clientes.
 
+No painel/API do Asaas, configure um webhook com:
+
+- URL: `https://<dominio-publico>/api/v1/webhooks/asaas`;
+- token de autenticação igual a `ASAAS_WEBHOOK_TOKEN` e diferente da API key;
+- eventos: `PAYMENT_CONFIRMED`, `PAYMENT_RECEIVED`,
+  `PAYMENT_CREDIT_CARD_CAPTURE_REFUSED`, `PAYMENT_REPROVED_BY_RISK_ANALYSIS` e
+  `PAYMENT_REFUNDED`;
+- envio sequencial inicialmente, até a capacidade do ambiente ser medida.
+
+O token deve possuir entre 32 e 255 caracteres. O endpoint responde 200 para eventos
+processados, duplicados ou destinados à conciliação manual; falha transitória responde 500
+para solicitar retry. Restrinja acesso aos IPs oficiais do Asaas no firewall/reverse proxy
+quando a infraestrutura de destino permitir.
+
 Para produção, altere os profiles e a URL:
 
 ```dotenv
@@ -63,8 +77,8 @@ SPRING_PROFILES_ACTIVE=prod,payment-asaas
 ASAAS_BASE_URL=https://api.asaas.com/v3
 ```
 
-Não ative cobranças reais antes de concluir e validar webhook, retries/circuit breaker,
-conciliação, auditoria e procedimentos de estorno. Nunca exponha `ASAAS_API_KEY` ou
+Não ative cobranças reais antes de concluir retries/circuit breaker, conciliação periódica,
+política de retenção do payload e procedimentos operacionais de estorno. Nunca exponha `ASAAS_API_KEY` ou
 `ASAAS_WEBHOOK_TOKEN` em logs, commits ou respostas HTTP.
 
 ## Validar a configuração
@@ -99,7 +113,7 @@ curl --fail http://127.0.0.1:8080/actuator/health
 Confirme também:
 
 - containers sem loop de reinício;
-- migrations V1 a V5 aplicadas uma única vez;
+- migrations V1 a V6 aplicadas uma única vez;
 - registro e login respondendo sem detalhes internos;
 - logs contendo `correlationId`;
 - PostgreSQL e Redis inacessíveis pela internet;

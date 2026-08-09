@@ -20,6 +20,8 @@ Ports & Adapters e testes com PostgreSQL e Redis reais via Testcontainers.
 - criação idempotente de pedidos com Redis;
 - máquina de estados do pedido, do pagamento à entrega;
 - pagamentos com domínio hexagonal, gateway substituível e adapter para o Sandbox Asaas;
+- webhook Asaas autenticado, idempotente e auditado, com tratamento de confirmação, recusa
+  e estorno;
 - contrato de erros seguro baseado em RFC 9457;
 - Correlation ID propagado na resposta, nos logs e no gateway;
 - Actuator, OpenAPI/Swagger, logs JSON em produção e CI com cobertura mínima.
@@ -179,6 +181,8 @@ passos pelo Swagger; use o token retornado pelo login no botão **Authorize**.
 - leituras de catálogo e endpoints de autenticação são públicos;
 - alterações de catálogo e envio/entrega de pedidos exigem `ADMIN`;
 - pedidos e pagamentos exigem JWT válido;
+- `POST /api/v1/webhooks/asaas` não usa JWT: ele exige o header privado
+  `asaas-access-token` e existe apenas com o profile `payment-asaas`;
 - o cadastro de cliente exige CPF/CNPJ para criar o pagador no gateway, mas esse dado não é
   devolvido nas respostas públicas;
 - `POST /api/v1/orders` exige `Idempotency-Key` de até 128 caracteres seguros;
@@ -201,7 +205,7 @@ Os testes de integração sobem PostgreSQL 16 e Redis 7 isolados via Testcontain
 interrompe o build abaixo de 70% de cobertura de linhas. O relatório fica em
 `target/site/jacoco/index.html`.
 
-Última validação local da baseline em 09/08/2026: **72 testes aprovados** e **83,11% de
+Última validação local da baseline em 09/08/2026: **84 testes aprovados** e **85,35% de
 cobertura de linhas**.
 
 ## Configuração e produção
@@ -216,8 +220,8 @@ Pontos importantes:
 - logs do perfil `prod` são JSON e incluem contexto de correlação;
 - o gateway padrão é um simulador determinístico, adequado à demonstração do portfólio;
 - o Sandbox Asaas é ativado com `docker,payment-asaas`; a chave fica somente no `.env`;
-- produção usa `prod,payment-asaas` e `https://api.asaas.com/v3`, mas só deve receber
-  cobranças depois da entrega dos webhooks, resiliência e conciliação planejados;
+- produção usa `prod,payment-asaas` e `https://api.asaas.com/v3`; o webhook já está
+  implementado, mas resiliência e conciliação periódica ainda precisam ser concluídas;
 - domínio, DNS, certificado TLS e reverse proxy pertencem à infraestrutura de destino e não
   são criados pelo Compose desta baseline.
 
