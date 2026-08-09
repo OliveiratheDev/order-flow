@@ -4,6 +4,9 @@ import com.start.overflow.order.dto.CreateOrderRequest;
 import com.start.overflow.order.dto.OrderResponse;
 import com.start.overflow.order.service.OrderService;
 import com.start.overflow.shared.dto.PageResponse;
+import com.start.overflow.shared.idempotency.Idempotent;
+import com.start.overflow.shared.idempotency.IdempotencyAspect;
+import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.security.SecurityRequirement;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
@@ -17,6 +20,7 @@ import org.springframework.web.bind.annotation.PatchMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestController;
@@ -33,7 +37,12 @@ public class OrderController {
     }
 
     @PostMapping
-    public ResponseEntity<OrderResponse> create(@Valid @RequestBody CreateOrderRequest request) {
+    @Idempotent(payloadArgument = 1)
+    public ResponseEntity<OrderResponse> create(
+            @Parameter(description = "Chave única da tentativa, retida por 24 horas")
+            @RequestHeader(value = IdempotencyAspect.HEADER, required = false)
+            String idempotencyKey,
+            @Valid @RequestBody CreateOrderRequest request) {
         OrderResponse response = orderService.create(request);
         return ResponseEntity.created(ServletUriComponentsBuilder.fromCurrentRequest()
                         .path("/{id}").buildAndExpand(response.id()).toUri())

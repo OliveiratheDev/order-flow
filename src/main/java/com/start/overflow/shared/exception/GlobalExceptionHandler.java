@@ -2,7 +2,7 @@ package com.start.overflow.shared.exception;
 
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.ConstraintViolationException;
-import org.slf4j.MDC;
+import com.start.overflow.shared.observability.CorrelationIdContext;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.orm.ObjectOptimisticLockingFailureException;
 import org.springframework.security.core.AuthenticationException;
@@ -18,7 +18,6 @@ import java.net.URI;
 import java.time.Instant;
 import java.util.List;
 import java.util.Map;
-import java.util.UUID;
 import java.util.stream.Collectors;
 
 @RestControllerAdvice
@@ -41,7 +40,7 @@ public class GlobalExceptionHandler {
     @ExceptionHandler(InvalidTransitionException.class)
     public ProblemDetail handleInvalidTransition(InvalidTransitionException ex,
                                                   HttpServletRequest request) {
-        return buildProblemDetail(HttpStatus.UNPROCESSABLE_ENTITY, "/errors/invalid-transition",
+        return buildProblemDetail(HttpStatus.UNPROCESSABLE_CONTENT, "/errors/invalid-transition",
                 "Transição de estado inválida", ex.getMessage(), request);
     }
 
@@ -49,6 +48,36 @@ public class GlobalExceptionHandler {
     public ProblemDetail handleDomainValidation(ValidationException ex, HttpServletRequest request) {
         return buildProblemDetail(HttpStatus.BAD_REQUEST, "/errors/validation",
                 "Erro de validação", ex.getMessage(), request);
+    }
+
+    @ExceptionHandler(IdempotencyKeyRequiredException.class)
+    public ProblemDetail handleMissingIdempotencyKey(IdempotencyKeyRequiredException ex,
+                                                     HttpServletRequest request) {
+        return buildProblemDetail(HttpStatus.BAD_REQUEST, "/errors/idempotency-key-required",
+                "Chave de idempotência inválida", ex.getMessage(), request);
+    }
+
+    @ExceptionHandler(IdempotencyConflictException.class)
+    public ProblemDetail handleIdempotencyConflict(IdempotencyConflictException ex,
+                                                   HttpServletRequest request) {
+        return buildProblemDetail(HttpStatus.CONFLICT, "/errors/idempotency-in-progress",
+                "Requisição em processamento", ex.getMessage(), request);
+    }
+
+    @ExceptionHandler(IdempotencyPayloadMismatchException.class)
+    public ProblemDetail handleIdempotencyPayloadMismatch(IdempotencyPayloadMismatchException ex,
+                                                          HttpServletRequest request) {
+        return buildProblemDetail(HttpStatus.UNPROCESSABLE_CONTENT,
+                "/errors/idempotency-payload-mismatch",
+                "Chave reutilizada com outro conteúdo", ex.getMessage(), request);
+    }
+
+    @ExceptionHandler(IdempotencyUnavailableException.class)
+    public ProblemDetail handleIdempotencyUnavailable(IdempotencyUnavailableException ex,
+                                                       HttpServletRequest request) {
+        return buildProblemDetail(HttpStatus.SERVICE_UNAVAILABLE,
+                "/errors/idempotency-unavailable",
+                "Idempotência indisponível", ex.getMessage(), request);
     }
 
     @ExceptionHandler(MethodArgumentNotValidException.class)
@@ -117,17 +146,14 @@ public class GlobalExceptionHandler {
 
     @ExceptionHandler(Exception.class)
     public ProblemDetail handleGeneric(Exception ex, HttpServletRequest request) {
-        String traceId = UUID.randomUUID().toString().substring(0, 12);
-        try {
-            MDC.put("traceId", traceId);
-            log.error("Erro não tratado [traceId={}]", traceId, ex);
-        } finally {
-            MDC.remove("traceId");
-        }
+        String correlationId = CorrelationIdContext.currentOrCreate();
+        log.atError().setCause(ex)
+                .addKeyValue("correlationId", correlationId)
+                .log("Erro não tratado");
 
         return buildProblemDetail(HttpStatus.INTERNAL_SERVER_ERROR, "/errors/internal",
                 "Erro interno",
-                "Erro interno. Informe o código " + traceId + " ao suporte.",
+                "Erro interno. Informe o código " + correlationId + " ao suporte.",
                 request);
     }
 
@@ -138,6 +164,7 @@ public class GlobalExceptionHandler {
         problem.setTitle(title);
         problem.setInstance(URI.create(request.getRequestURI()));
         problem.setProperty("timestamp", Instant.now());
+        problem.setProperty("correlationId", CorrelationIdContext.currentOrCreate());
         return problem;
     }
 }
