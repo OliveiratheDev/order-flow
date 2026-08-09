@@ -3,8 +3,9 @@
 ## Escopo deste guia
 
 O repositório entrega uma imagem Docker da API e um Compose de produção com OrderFlow,
-PostgreSQL e Redis. Provisionamento da VPS, DNS, TLS, firewall, backups externos e gerenciador
-de segredos dependem da plataforma escolhida e não são automatizados nesta baseline.
+PostgreSQL, Redis e RabbitMQ. Provisionamento da VPS, DNS, TLS, firewall, backups externos e
+gerenciador de segredos dependem da plataforma escolhida e não são automatizados nesta
+baseline.
 
 ## Artefatos
 
@@ -12,13 +13,14 @@ de segredos dependem da plataforma escolhida e não são automatizados nesta bas
   runtime não-root;
 - [`docker-compose.yml`](../docker-compose.yml): ambiente local com portas de banco expostas;
 - [`docker-compose.prod.yml`](../docker-compose.prod.yml): ambiente de implantação, sem
-  publicar PostgreSQL ou Redis no host;
+  publicar PostgreSQL, Redis ou RabbitMQ no host;
 - [`.env.example`](../.env.example): catálogo de variáveis, sem valores reais.
 
 ## Preparar o ambiente
 
 1. Instale Docker Engine com Compose v2.
-2. Libere somente SSH, HTTP e HTTPS no firewall; não publique `5432` nem `6379`.
+2. Libere somente SSH, HTTP e HTTPS no firewall; não publique `5432`, `6379`, `5672` nem
+   `15672`.
 3. Configure um reverse proxy com certificado válido para encaminhar HTTPS à porta da API.
 4. Crie armazenamento e política de backup para o volume PostgreSQL.
 5. Mantenha o arquivo `.env` fora do Git e restrito ao usuário do serviço.
@@ -30,13 +32,35 @@ DB_NAME=orderflow
 DB_USER=orderflow_app
 DB_PASSWORD=<senha-aleatoria-forte>
 REDIS_PASSWORD=<outra-senha-aleatoria-forte>
+RABBITMQ_USER=orderflow_app
+RABBITMQ_PASSWORD=<senha-aleatoria-exclusiva-do-rabbitmq>
 JWT_SECRET=<segredo-aleatorio-com-ao-menos-32-bytes>
 APP_PORT=8080
 SPRING_PROFILES_ACTIVE=prod
 ```
 
-Não reutilize senha do banco como segredo JWT. Uma alteração de `JWT_SECRET` invalida tokens
-emitidos anteriormente.
+Não reutilize senhas entre banco, Redis, RabbitMQ e JWT. Uma alteração de `JWT_SECRET`
+invalida tokens emitidos anteriormente.
+
+## RabbitMQ
+
+No Compose local, AMQP fica em `localhost:5672` e a Management UI em
+`http://localhost:15672`. As portas podem ser alteradas com
+`RABBITMQ_AMQP_HOST_PORT` e `RABBITMQ_MANAGEMENT_HOST_PORT`. A aplicação usa a porta interna
+`5672`, independentemente do remapeamento no host.
+
+O Compose de produção não publica AMQP nem a UI. A topologia é criada pela aplicação:
+
+- `order.events`: exchange `topic`;
+- `notification.order-created`, `notification.order-paid` e `audit.queue`: filas de trabalho
+  com dead-letter configurado;
+- `order.events.dlx`: exchange `direct` de mensagens mortas;
+- `order.events.dlq`: fila de inspeção, sem dead-letter próprio.
+
+Quando a DLQ acumular, não republique tudo automaticamente. Primeiro inspecione headers
+`x-death`, routing key, versão e payload; corrija a causa; registre os `eventId` afetados; e
+somente então faça reprocessamento controlado. Mantenha backup do volume `rabbitmq_data` de
+acordo com a criticidade das mensagens.
 
 ## Gateway de pagamento Asaas
 
@@ -145,8 +169,8 @@ docker compose -f docker-compose.prod.yml up -d
 docker compose -f docker-compose.prod.yml ps
 ```
 
-O container da aplicação só inicia depois que PostgreSQL e Redis estiverem saudáveis. O
-Flyway aplica migrations pendentes antes de o Hibernate validar o schema.
+O container da aplicação só inicia depois que PostgreSQL, Redis e RabbitMQ estiverem
+saudáveis. O Flyway aplica migrations pendentes antes de o Hibernate validar o schema.
 
 ## Verificação pós-deploy
 
@@ -162,9 +186,10 @@ Confirme também:
 - migrations V1 a V8 aplicadas uma única vez;
 - tabela `shedlock` acessível e métrica de execução da conciliação presente;
 - tabela `order_event_audit` recebendo somente eventos de transações confirmadas;
+- exchanges e filas duráveis presentes e `order.events.dlq` sem ciclo de dead-letter;
 - registro e login respondendo sem detalhes internos;
 - logs contendo `correlationId`;
-- PostgreSQL e Redis inacessíveis pela internet;
+- PostgreSQL, Redis, AMQP e RabbitMQ Management inacessíveis pela internet;
 - Swagger retornando 404/403 em produção, conforme esperado;
 - certificado, redirecionamento HTTPS e renovação automática funcionando.
 

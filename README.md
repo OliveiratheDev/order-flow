@@ -20,6 +20,7 @@ Ports & Adapters e testes com PostgreSQL e Redis reais via Testcontainers.
 - criação idempotente de pedidos com Redis;
 - máquina de estados do pedido, do pagamento à entrega;
 - eventos de domínio de pedido vinculados ao commit, com auditoria transacional e métricas;
+- topologia RabbitMQ declarada em código, com filas duráveis, roteamento por tópico e DLQ;
 - pagamentos com domínio hexagonal, gateway substituível e adapter para o Sandbox Asaas;
 - resiliência financeira com timeout, circuit breaker, retry seguro e fallback pendente;
 - webhook Asaas autenticado, idempotente e auditado, com tratamento de confirmação, recusa
@@ -39,6 +40,7 @@ Ports & Adapters e testes com PostgreSQL e Redis reais via Testcontainers.
 | Segurança | Spring Security, OAuth2 Resource Server, JWT HS256, BCrypt |
 | Persistência | Spring Data JPA, Hibernate, PostgreSQL 16, Flyway |
 | Estado distribuído | Redis 7 para idempotência e cache |
+| Mensageria | RabbitMQ 3.13, Spring AMQP 4.1, JSON e Dead Letter Queue |
 | Resiliência | Resilience4j 2.4 para timeout, retry, circuit breaker e métricas |
 | Agendamento | Spring Scheduling e ShedLock 7.7 com lock no PostgreSQL |
 | Mapeamento | MapStruct; Lombok usado de forma conservadora |
@@ -63,12 +65,14 @@ flowchart LR
         api["Contêiner: OrderFlow API<br/>Java 21 + Spring Boot 4.1<br/>REST, regras e casos de uso"]
         postgres[("Contêiner: PostgreSQL 16<br/>catálogo, usuários, pedidos e pagamentos")]
         redis[("Contêiner: Redis 7<br/>idempotência e cache")]
+        rabbit[("Contêiner: RabbitMQ<br/>eventos, filas e DLQ")]
     end
 
     customer -->|"HTTPS / JSON + JWT"| api
     admin -->|"HTTPS / JSON + JWT ADMIN"| api
     api -->|"JDBC / transações"| postgres
     api -->|"RESP / TTL"| redis
+    api -->|"AMQP / JSON"| rabbit
     api -.->|"HTTPS, perfil payment-asaas"| gateway
 ```
 
@@ -101,7 +105,8 @@ Leia a [visão técnica detalhada](docs/PROJECT_OVERVIEW.md) e o
 
 ## Início rápido com Docker
 
-Pré-requisitos: Docker Desktop com Compose e portas `8080`, `5433` e `6380` livres.
+Pré-requisitos: Docker Desktop com Compose e portas `8080`, `5433`, `6380`, `5672` e
+`15672` livres.
 Não é necessário instalar Maven: o build usa o Wrapper versionado no repositório.
 
 ```bash
@@ -109,8 +114,8 @@ docker compose up --build -d
 docker compose ps
 ```
 
-O Compose inicia a API, PostgreSQL e Redis, aguarda os health checks e executa as migrations
-Flyway automaticamente. Para acompanhar a aplicação:
+O Compose inicia a API, PostgreSQL, Redis e RabbitMQ, aguarda os health checks e executa as
+migrations Flyway automaticamente. Para acompanhar a aplicação:
 
 ```bash
 docker compose logs -f app
@@ -126,6 +131,11 @@ Serviços locais:
 | OpenAPI JSON | `http://localhost:8080/v3/api-docs` |
 | PostgreSQL | `localhost:5433` |
 | Redis | `localhost:6380` |
+| RabbitMQ AMQP | `localhost:5672` |
+| RabbitMQ Management UI | `http://localhost:15672` |
+
+A UI usa `RABBITMQ_USER` e `RABBITMQ_PASSWORD` do `.env`. No ambiente local sem override,
+ambos são `orderflow`; não use esses defaults fora da máquina de desenvolvimento.
 
 Se `8080` já estiver ocupada, defina outra porta antes de subir o ambiente:
 
@@ -212,7 +222,7 @@ Os testes de integração sobem PostgreSQL 16 e Redis 7 isolados via Testcontain
 interrompe o build abaixo de 70% de cobertura de linhas. O relatório fica em
 `target/site/jacoco/index.html`.
 
-Última validação local da baseline em 09/08/2026: **114 testes aprovados** e **86,88% de
+Última validação local da baseline em 09/08/2026: **119 testes aprovados** e **86,97% de
 cobertura de linhas**.
 
 ## Configuração e produção
@@ -222,8 +232,8 @@ variáveis e [`docs/DEPLOYMENT.md`](docs/DEPLOYMENT.md) para o procedimento de i
 
 Pontos importantes:
 
-- `prod` exige PostgreSQL, Redis e `JWT_SECRET`; Swagger e bootstrap de administrador ficam
-  desativados;
+- `prod` exige PostgreSQL, Redis, RabbitMQ e `JWT_SECRET`; Swagger e bootstrap de
+  administrador ficam desativados;
 - logs do perfil `prod` são JSON e incluem contexto de correlação;
 - o gateway padrão é um simulador determinístico, adequado à demonstração do portfólio;
 - o Sandbox Asaas é ativado com `docker,payment-asaas`; a chave fica somente no `.env`;
@@ -245,6 +255,6 @@ Pontos importantes:
 
 ## Limites conhecidos
 
-Esta baseline não inclui RabbitMQ, Prometheus, Grafana, refresh token nem um gateway de
-pagamento contratado. Esses itens pertencem à evolução planejada; a documentação não os
-representa como recursos já entregues.
+Esta baseline ainda não publica nem consome os eventos no RabbitMQ; ela entrega a topologia
+e o contrato que sustentam essa evolução. Prometheus, Grafana, refresh token e um gateway de
+pagamento contratado também não fazem parte da entrega atual.

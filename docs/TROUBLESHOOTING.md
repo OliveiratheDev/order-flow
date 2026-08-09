@@ -32,7 +32,7 @@ docker inspect overflow-app-1
 
 Verifique, nesta ordem:
 
-1. PostgreSQL e Redis estão `healthy`;
+1. PostgreSQL, Redis e RabbitMQ estão `healthy`;
 2. `JWT_SECRET` possui ao menos 32 bytes;
 3. credenciais e nomes do banco coincidem entre app e PostgreSQL;
 4. a migration mais recente foi aplicada sem erro;
@@ -40,6 +40,34 @@ Verifique, nesta ordem:
 
 O health check interno usa `/actuator/health` na porta `8080` do container, mesmo quando a
 porta do host é diferente.
+
+## RabbitMQ não inicia ou a UI não abre
+
+Use `docker compose ps rabbitmq` e `docker compose logs --tail 200 rabbitmq`. Localmente,
+confirme se `5672` e `15672` estão livres; remapeie apenas as portas do host quando necessário:
+
+```dotenv
+RABBITMQ_AMQP_HOST_PORT=5673
+RABBITMQ_MANAGEMENT_HOST_PORT=15673
+```
+
+A aplicação dentro do Compose continua usando `rabbitmq:5672`. A UI usa
+`RABBITMQ_USER`/`RABBITMQ_PASSWORD`, não credenciais do PostgreSQL ou JWT. Alterar as
+credenciais depois que o volume foi criado não modifica automaticamente o usuário já salvo
+no broker; faça rotação pelo procedimento administrativo do RabbitMQ.
+
+## Fila `order.events.dlq` está acumulando
+
+Não purgue nem reenvie a fila inteira como primeira ação. Inspecione `x-death`, exchange,
+routing key, `eventId`, `eventType` e `eventVersion`; identifique se a causa é payload
+incompatível, falha transitória ou bug do consumidor. Corrija a causa e reprocesse apenas os
+eventos registrados. A DLQ deliberadamente não possui outra DLQ, evitando loop infinito.
+
+## Log informa que a mensagem não encontrou binding
+
+`mandatory=true` e publisher returns transformam uma mensagem não roteada em aviso. Compare a
+routing key com os bindings declarados em `RabbitTopology`. Não crie binding manual pelo
+console: ajuste a configuração versionada, faça deploy e confirme a topologia no broker.
 
 ## `JWT_SECRET é obrigatório` ou possui menos de 32 bytes
 

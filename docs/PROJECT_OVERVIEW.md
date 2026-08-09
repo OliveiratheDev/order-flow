@@ -100,6 +100,7 @@ Concentra apenas preocupações realmente transversais:
 - paginação independente do tipo do Spring Data;
 - cache e OpenAPI;
 - idempotência com Redis e AOP;
+- envelope e topologia comuns de mensageria;
 - filtros de Correlation ID e contexto de usuário nos logs.
 
 ## Persistência e transações
@@ -136,6 +137,38 @@ A reserva e a restauração de estoque permanecem síncronas na transação do c
 listener `AFTER_COMMIT` seria inadequado para essa invariável: permitiria confirmar um pedido
 sem confirmar sua reserva. A publicação em broker e o risco de dual write são tratados na
 evolução de mensageria, sem enfraquecer a consistência local.
+
+## Mensageria RabbitMQ
+
+A topologia é declarada por beans Spring AMQP e recriada pela aplicação quando aponta para
+um broker vazio. Exchanges, filas e bindings são duráveis. O exchange `order.events` é do
+tipo `topic`: notificações assinam chaves específicas e auditoria assina `order.#`.
+
+```mermaid
+flowchart TD
+    events["order.events<br/>topic"]
+    created["notification.order-created<br/>order.created"]
+    paid["notification.order-paid<br/>order.paid"]
+    audit["audit.queue<br/>order.#"]
+    dlx["order.events.dlx<br/>direct"]
+    dlq["order.events.dlq"]
+    events --> created
+    events --> paid
+    events --> audit
+    created -. rejeição .-> dlx
+    paid -. rejeição .-> dlx
+    audit -. rejeição .-> dlx
+    dlx -->|dead| dlq
+```
+
+As três filas de trabalho apontam para a mesma DLX; a DLQ não aponta para si mesma. Mensagens
+usam JSON pelo `JacksonJsonMessageConverter` de Jackson 3, sem serialização binária Java. O
+envelope comum contém `eventId`, `eventType`, `eventVersion`, `occurredAt`, `correlationId` e
+`payload`.
+
+Confirms correlacionados verificam a aceitação pelo broker. `mandatory` e publisher returns
+tornam visível em log uma routing key sem binding. Esta etapa entrega infraestrutura e
+contrato; a publicação após commit e o consumo idempotente pertencem às etapas seguintes.
 
 ## Idempotência
 
