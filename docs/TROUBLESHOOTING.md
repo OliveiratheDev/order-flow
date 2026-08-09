@@ -124,7 +124,8 @@ A confirmação assíncrona ocorre pelo webhook Asaas configurado para a URL pú
 Esse é o fallback esperado quando a criação ficou inconclusiva após timeout/5xx e a consulta
 por `externalReference` também não confirmou a cobrança. O pedido permanece
 `AWAITING_PAYMENT`; não repita manualmente o `POST /payments`, pois isso pode duplicar a
-cobrança. Preserve o registro para a conciliação da OF-043.
+cobrança. O job tentará localizá-la pela referência estável do pedido após 10 minutos; não
+altere o `externalId` manualmente.
 
 ## Circuito do Asaas está aberto
 
@@ -146,7 +147,22 @@ esperado é `asaas-access-token`.
 Consulte `webhook_event_log` sem copiar o payload para logs ou chamados não protegidos.
 Falha com resposta HTTP 500 é transitória e permite retry do mesmo `event_id`. Resposta 200
 com status `RECONCILIATION_REQUIRED` indica divergência de valor/referência ou transição
-impossível; esse caso exige análise manual e será automatizado pela OF-043.
+impossível. O job volta a consultar o gateway e, se confirmar valor ou identificador
+conflitante, muda o pagamento para `DIVERGENT`, sem alterar pedido nem estoque.
+
+## Pagamento ficou `DIVERGENT`
+
+Esse status é deliberadamente terminal para automação. Consulte os logs pelo `paymentId`,
+`orderId` e `correlationId`; compare o valor e o identificador no Asaas com os dados locais.
+Não altere o banco diretamente. Registre a decisão e execute o procedimento financeiro
+aprovado para captura, cancelamento ou estorno.
+
+## Job de conciliação não executa
+
+Consulte `orderflow.payment.reconciliation.executions` no Actuator e a tabela `shedlock`.
+Uma instância que não obtém o lock pula a execução, o que é esperado. Não apague a linha de
+lock manualmente: ajuste `lock_until` apenas por procedimento operacional controlado. Confira
+também o cron, o fuso esperado e se o PostgreSQL está disponível.
 
 ## Caracteres acentuados aparecem incorretamente no PowerShell
 

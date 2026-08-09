@@ -31,6 +31,9 @@ sequenceDiagram
     API->>DB: deduplica evento e bloqueia pagamento
     API->>DB: transiciona pagamento e pedido
     API-->>Gateway: 200 processado/duplicado
+    API->>DB: adquire lock distribuído da conciliação
+    API->>Gateway: consulta cobranças PENDING antigas
+    API->>DB: reaplica a máquina de estados ou marca DIVERGENT
 ```
 
 ## Fronteiras dos módulos
@@ -105,6 +108,7 @@ O schema é propriedade do Flyway e o Hibernate executa apenas `validate`. As mi
 | V4 | pagamentos e unicidade por pedido |
 | V5 | CPF/CNPJ de cobrança do cliente e URL externa do pagamento |
 | V6 | auditoria/deduplicação de webhooks e status de pagamento estornado |
+| V7 | status divergente, índice de conciliação e tabela de locks distribuídos |
 
 `spring.jpa.open-in-view=false` força o carregamento necessário dentro do service e evita
 consultas acidentais durante a serialização. Relações são lazy; queries específicas e batching
@@ -189,7 +193,25 @@ para criação. Em falha inconclusiva, o adapter faz uma consulta segura por
 `externalReference`; somente consultas recebem até 3 tentativas com backoff exponencial.
 Se ainda não houver confirmação, a aplicação persiste o pagamento sem `externalId`, em
 `PENDING`, mantém o pedido em `AWAITING_PAYMENT` e informa honestamente que a cobrança será
-processada depois. Esse registro é a entrada da conciliação periódica da OF-043.
+processada depois. Esse registro é a entrada da conciliação periódica.
+
+## Conciliação periódica
+
+O job executa por padrão a cada 15 minutos e seleciona no máximo 200 pagamentos `PENDING`
+associados a pedidos `AWAITING_PAYMENT`, com idade entre 10 minutos e 7 dias. Esses limites,
+o cron e os tempos do lock são configuráveis por variáveis de ambiente.
+
+ShedLock coordena as instâncias pela tabela PostgreSQL `shedlock` usando o relógio do banco.
+O gateway é consultado sem manter uma transação aberta; depois, uma transação curta bloqueia
+o pagamento, confirma que ele continua pendente e aplica a transição. Isso torna a execução
+idempotente diante de concorrência com webhook ou outra instância.
+
+Cobrança aprovada paga o pedido; recusada cancela o pedido e restaura estoque; ainda pendente
+apenas atualiza identificador/URL. Cobrança ausente gera alerta operacional e não muda dados.
+Valor ausente ou diferente e identificador conflitante mudam o pagamento para `DIVERGENT`,
+sem alterar pedido ou estoque. Logs estruturados incluem pagamento, pedido, estados, ação e
+Correlation ID. Actuator publica as métricas `orderflow.payment.reconciliation.executions`,
+`duration`, `checked`, `corrections`, `divergences`, `not_found` e `errors`.
 
 ## Webhook financeiro
 
@@ -211,6 +233,7 @@ A constraint única de `event_id` protege inclusive entregas concorrentes. Valor
 - idempotência: integração com Redis 7, incluindo repetição e concorrência;
 - contrato HTTP: MockMvc com autenticação, autorização, validação e fluxo completo;
 - migrations: Flyway parte de schema vazio em Testcontainers;
+- scheduler: dois provedores ShedLock no mesmo PostgreSQL comprovam exclusão mútua;
 - qualidade: JaCoCo exige pelo menos 70% de linhas no `verify`.
 
 ## Decisões e limites

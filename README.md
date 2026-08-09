@@ -23,6 +23,8 @@ Ports & Adapters e testes com PostgreSQL e Redis reais via Testcontainers.
 - resiliência financeira com timeout, circuit breaker, retry seguro e fallback pendente;
 - webhook Asaas autenticado, idempotente e auditado, com tratamento de confirmação, recusa
   e estorno;
+- conciliação periódica de cobranças pendentes com lock distribuído e revisão manual de
+  divergências financeiras;
 - contrato de erros seguro baseado em RFC 9457;
 - Correlation ID propagado na resposta, nos logs e no gateway;
 - Actuator, OpenAPI/Swagger, logs JSON em produção e CI com cobertura mínima.
@@ -37,6 +39,7 @@ Ports & Adapters e testes com PostgreSQL e Redis reais via Testcontainers.
 | Persistência | Spring Data JPA, Hibernate, PostgreSQL 16, Flyway |
 | Estado distribuído | Redis 7 para idempotência e cache |
 | Resiliência | Resilience4j 2.4 para timeout, retry, circuit breaker e métricas |
+| Agendamento | Spring Scheduling e ShedLock 7.7 com lock no PostgreSQL |
 | Mapeamento | MapStruct; Lombok usado de forma conservadora |
 | Qualidade | JUnit 5, Mockito, MockMvc, Testcontainers, JaCoCo |
 | Operação | Docker multi-stage, Docker Compose, Actuator, logs estruturados |
@@ -207,7 +210,7 @@ Os testes de integração sobem PostgreSQL 16 e Redis 7 isolados via Testcontain
 interrompe o build abaixo de 70% de cobertura de linhas. O relatório fica em
 `target/site/jacoco/index.html`.
 
-Última validação local da baseline em 09/08/2026: **90 testes aprovados** e **85,75% de
+Última validação local da baseline em 09/08/2026: **107 testes aprovados** e **86,33% de
 cobertura de linhas**.
 
 ## Configuração e produção
@@ -223,8 +226,8 @@ Pontos importantes:
 - o gateway padrão é um simulador determinístico, adequado à demonstração do portfólio;
 - o Sandbox Asaas é ativado com `docker,payment-asaas`; a chave fica somente no `.env`;
 - produção usa `prod,payment-asaas` e `https://api.asaas.com/v3`; o webhook já está
-  implementado e a integração já possui timeout, circuit breaker e fallback; a conciliação
-  periódica da OF-043 ainda precisa ser concluída antes de cobranças reais;
+  implementado e a integração possui timeout, circuit breaker, fallback e conciliação
+  periódica com lock distribuído;
 - domínio, DNS, certificado TLS e reverse proxy pertencem à infraestrutura de destino e não
   são criados pelo Compose desta baseline.
 

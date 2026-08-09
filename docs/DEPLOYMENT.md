@@ -52,6 +52,12 @@ ASAAS_PAYMENT_DUE_DAYS=3
 ASAAS_CONNECT_TIMEOUT=3s
 ASAAS_READ_TIMEOUT=3s
 ASAAS_WEBHOOK_TOKEN=<token-exclusivo-do-webhook>
+PAYMENT_RECONCILIATION_CRON=0 */15 * * * *
+PAYMENT_RECONCILIATION_MIN_AGE=10m
+PAYMENT_RECONCILIATION_MAX_AGE=7d
+PAYMENT_RECONCILIATION_BATCH_SIZE=200
+PAYMENT_RECONCILIATION_LOCK_AT_MOST=15m
+PAYMENT_RECONCILIATION_LOCK_AT_LEAST=1m
 ```
 
 O adapter envia a chave no header `access_token`, identifica a aplicação por `User-Agent`,
@@ -65,6 +71,25 @@ chave de idempotência. Após timeout ou 5xx, a aplicação consulta a cobrança
 `PENDING`, mantém o pedido em `AWAITING_PAYMENT` e devolve `processingMessage` ao cliente.
 O retry exponencial (até 3 tentativas, 500 ms e 1 s de espera) é aplicado somente às consultas
 seguras. Respostas 4xx nunca são repetidas.
+
+O job de conciliação consulta a cada 15 minutos pagamentos pendentes entre 10 minutos e 7
+dias, em lotes de até 200. ShedLock grava o lock no PostgreSQL usando o horário do banco;
+apenas uma instância executa o lote. O tempo máximo padrão de 15 minutos supera os cerca de
+10 minutos do pior caso esperado do lote e o mínimo de 1 minuto evita execuções muito
+próximas. Se aumentar lote, timeout ou retry, recalcule o lock máximo.
+
+Para acompanhar o job com JWT administrativo:
+
+```text
+GET /actuator/metrics/orderflow.payment.reconciliation.executions
+GET /actuator/metrics/orderflow.payment.reconciliation.duration
+GET /actuator/metrics/orderflow.payment.reconciliation.divergences
+GET /actuator/metrics/orderflow.payment.reconciliation.errors
+```
+
+Configure alertas externos para crescimento de `divergences`, `not_found` ou `errors`.
+`DIVERGENT` nunca é corrigido automaticamente: compare pedido, pagamento e cobrança no Asaas
+antes de uma ação operacional.
 
 Há circuitos independentes para criação, consulta e cancelamento. Cada circuito usa janela
 de 20 chamadas, mínimo de 10, taxa de falha de 50%, abertura por 30 segundos e 3 chamadas em
@@ -97,9 +122,10 @@ SPRING_PROFILES_ACTIVE=prod,payment-asaas
 ASAAS_BASE_URL=https://api.asaas.com/v3
 ```
 
-Não ative cobranças reais antes de concluir a conciliação periódica da OF-043, a política de
-retenção do payload, os alertas e os procedimentos operacionais de estorno. Nunca exponha
-`ASAAS_API_KEY` ou `ASAAS_WEBHOOK_TOKEN` em logs, commits ou respostas HTTP.
+Não ative cobranças reais antes de definir a política de retenção do payload, integrar as
+métricas ao canal de alertas e aprovar os procedimentos operacionais de divergência e
+estorno. Nunca exponha `ASAAS_API_KEY` ou `ASAAS_WEBHOOK_TOKEN` em logs, commits ou respostas
+HTTP.
 
 ## Validar a configuração
 
@@ -133,7 +159,8 @@ curl --fail http://127.0.0.1:8080/actuator/health
 Confirme também:
 
 - containers sem loop de reinício;
-- migrations V1 a V6 aplicadas uma única vez;
+- migrations V1 a V7 aplicadas uma única vez;
+- tabela `shedlock` acessível e métrica de execução da conciliação presente;
 - registro e login respondendo sem detalhes internos;
 - logs contendo `correlationId`;
 - PostgreSQL e Redis inacessíveis pela internet;
