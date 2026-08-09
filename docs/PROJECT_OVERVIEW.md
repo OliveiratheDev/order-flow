@@ -308,10 +308,15 @@ A constraint única de `event_id` protege inclusive entregas concorrentes. Valor
 - scheduler: dois provedores ShedLock no mesmo PostgreSQL comprovam exclusão mútua;
 - eventos de domínio: PostgreSQL real comprova execução no commit, ausência no rollback e
   auditoria das transições criado, pago e cancelado;
+- mensageria: RabbitMQ e PostgreSQL reais comprovam topologia, roteamento, consumo idempotente,
+  retry, DLQ, cabeçalhos `x-death` e precisão do contrato JSON;
+- testes assíncronos: Awaitility observa condições com limite de dez segundos, sem
+  `Thread.sleep`;
 - qualidade: JaCoCo exige pelo menos 70% de linhas no `verify`.
 
 ## Decisões e limites
 
-As justificativas arquiteturais ficam em [`docs/adr`](adr/README.md). A baseline usa um gateway
-de pagamento simulado e não inclui broker, refresh token, Prometheus ou Grafana. Separar em
-microsserviços só será reconsiderado diante dos gatilhos observáveis registrados no ADR-001.
+As justificativas arquiteturais ficam em [`docs/adr`](adr/README.md). A baseline usa RabbitMQ
+como broker e mantém um gateway de pagamento simulado como padrão; refresh token, Prometheus e
+Grafana não fazem parte do escopo atual. Separar em microsserviços só será reconsiderado diante
+dos gatilhos observáveis registrados no ADR-001.

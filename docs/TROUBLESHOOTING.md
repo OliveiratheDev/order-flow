@@ -140,8 +140,9 @@ Execute pelo Maven Wrapper:
 .\mvnw.cmd verify
 ```
 
-Testcontainers precisa acessar o daemon e baixar `postgres:16-alpine` e `redis:7-alpine` na
-primeira execução.
+Testcontainers precisa acessar o daemon e baixar `postgres:16-alpine`, `redis:7-alpine` e
+`rabbitmq:3.13-management-alpine` na primeira execução. Os testes de mensageria declaram a
+topologia no contexto da aplicação e não exigem criação manual de exchange, filas ou bindings.
 
 ## Build falha na regra do JaCoCo
 

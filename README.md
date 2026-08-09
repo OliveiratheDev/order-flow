@@ -273,11 +273,13 @@ Com o Docker ativo, execute toda a verificação:
 ./mvnw verify
 ```
 
-Os testes de integração sobem PostgreSQL 16 e Redis 7 isolados via Testcontainers. O JaCoCo
-interrompe o build abaixo de 70% de cobertura de linhas. O relatório fica em
+Os testes de integração sobem PostgreSQL 16, Redis 7 e RabbitMQ 3.13 isolados via
+Testcontainers. A suíte de mensageria valida publicação após commit, ausência de mensagem no
+rollback, roteamento, auditoria, consumo idempotente, retry, DLQ e serialização sem usar esperas
+fixas. O JaCoCo interrompe o build abaixo de 70% de cobertura de linhas. O relatório fica em
 `target/site/jacoco/index.html`.
 
-Última validação local da baseline em 09/08/2026: **144 testes aprovados** e **87,79% de
+Última validação local da baseline em 09/08/2026: **155 testes aprovados** e **87,79% de
 cobertura de linhas**.
 
 ## Configuração e produção
