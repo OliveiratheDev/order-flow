@@ -34,7 +34,8 @@ class UserServiceTest {
 
     @Test
     void hashesPasswordBeforePersistence() {
-        RegisterRequest request = new RegisterRequest("Maria", "MARIA@example.com", "Senha123!");
+        RegisterRequest request = new RegisterRequest("Maria", "MARIA@example.com",
+                "529.982.247-25", "Senha123!");
         when(encoder.encode("Senha123!")).thenReturn("$2a$12$encoded");
         when(repository.save(any(AppUser.class))).thenAnswer(invocation -> invocation.getArgument(0));
 
@@ -43,6 +44,7 @@ class UserServiceTest {
         ArgumentCaptor<AppUser> captor = ArgumentCaptor.forClass(AppUser.class);
         verify(repository).save(captor.capture());
         assertThat(captor.getValue().getEmail()).isEqualTo("maria@example.com");
+        assertThat(captor.getValue().getDocument()).isEqualTo("52998224725");
         assertThat(captor.getValue().getPasswordHash()).isEqualTo("$2a$12$encoded");
         assertThat(captor.getValue().getPasswordHash()).doesNotContain("Senha123!");
     }
@@ -52,8 +54,20 @@ class UserServiceTest {
         when(repository.existsByEmailIgnoreCase("maria@example.com")).thenReturn(true);
 
         assertThatThrownBy(() -> service.register(
-                new RegisterRequest("Maria", "maria@example.com", "Senha123!")))
+                new RegisterRequest("Maria", "maria@example.com", "52998224725", "Senha123!")))
                 .isInstanceOf(BusinessRuleException.class);
+        verify(encoder, never()).encode(any());
+    }
+
+    @Test
+    void refusesDuplicateDocumentBeforeHashing() {
+        when(repository.existsByDocument("52998224725")).thenReturn(true);
+
+        assertThatThrownBy(() -> service.register(
+                new RegisterRequest("Maria", "maria@example.com", "529.982.247-25",
+                        "Senha123!")))
+                .isInstanceOf(BusinessRuleException.class)
+                .hasMessageContaining("CPF ou CNPJ");
         verify(encoder, never()).encode(any());
     }
 }

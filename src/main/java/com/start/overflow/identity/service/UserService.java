@@ -33,7 +33,11 @@ public class UserService {
         if (userRepository.existsByEmailIgnoreCase(email)) {
             throw new BusinessRuleException("Já existe um usuário com esse e-mail");
         }
-        AppUser user = new AppUser(request.name(), email,
+        String document = AppUser.normalizeDocument(request.document());
+        if (userRepository.existsByDocument(document)) {
+            throw new BusinessRuleException("Já existe um usuário com esse CPF ou CNPJ");
+        }
+        AppUser user = new AppUser(request.name(), email, document,
                 passwordEncoder.encode(request.password()), UserRole.CUSTOMER);
         return userMapper.toResponse(userRepository.save(user));
     }

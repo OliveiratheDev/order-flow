@@ -7,4 +7,6 @@ public interface PaymentGatewayPort {
     GatewayChargeResult createCharge(ChargeRequest request);
 
     GatewayChargeResult getCharge(String externalId);
+
+    void cancelCharge(String externalId);
 }

@@ -34,6 +34,9 @@ public class PaymentJpaEntity {
     @Column(name = "external_id", unique = true, length = 100)
     private String externalId;
 
+    @Column(name = "payment_url", length = 500)
+    private String paymentUrl;
+
     @Column(nullable = false, precision = 12, scale = 2)
     private BigDecimal amount;
 
@@ -62,6 +65,7 @@ public class PaymentJpaEntity {
         this.orderId = payment.getOrderId();
         this.customerId = payment.getCustomerId();
         this.externalId = payment.getExternalId();
+        this.paymentUrl = payment.getPaymentUrl();
         this.amount = payment.getAmount();
         this.method = payment.getMethod();
         this.status = payment.getStatus();
@@ -71,12 +75,13 @@ public class PaymentJpaEntity {
 
     void apply(Payment payment) {
         this.externalId = payment.getExternalId();
+        this.paymentUrl = payment.getPaymentUrl();
         this.status = payment.getStatus();
         this.updatedAt = payment.getUpdatedAt();
     }
 
     Payment toDomain() {
-        return Payment.restore(id, orderId, customerId, amount, method, externalId,
+        return Payment.restore(id, orderId, customerId, amount, method, externalId, paymentUrl,
                 status, createdAt, updatedAt);
     }
 }

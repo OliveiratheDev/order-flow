@@ -211,6 +211,12 @@ class ApplicationHttpIntegrationTest {
         mockMvc.perform(postJson("/api/v1/auth/register", "{invalid-json"))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.type").value("https://orderflow.dev/errors/malformed-request"));
+        mockMvc.perform(postJson("/api/v1/auth/register", """
+                        {"name":"Sem Documento","email":"sem-documento@example.com",
+                         "password":"Customer123!"}
+                        """))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.errors[0].field").value("document"));
         mockMvc.perform(postJson("/api/v1/auth/login", """
                         {"email":"outro@example.com","password":"senha-incorreta"}
                         """))
@@ -265,7 +271,8 @@ class ApplicationHttpIntegrationTest {
 
     private MvcResult registerCustomer(String email) throws Exception {
         return mockMvc.perform(postJson("/api/v1/auth/register", """
-                        {"name":"Cliente Teste","email":"%s","password":"Customer123!"}
+                        {"name":"Cliente Teste","email":"%s","document":"52998224725",
+                         "password":"Customer123!"}
                         """.formatted(email)))
                 .andExpect(status().isCreated())
                 .andExpect(jsonPath("$.tokenType").value("Bearer"))

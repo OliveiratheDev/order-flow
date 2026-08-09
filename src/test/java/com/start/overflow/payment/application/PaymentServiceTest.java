@@ -11,6 +11,7 @@ import com.start.overflow.payment.domain.Payment;
 import com.start.overflow.payment.domain.PaymentGatewayUnavailableException;
 import com.start.overflow.payment.domain.PaymentMethod;
 import com.start.overflow.payment.domain.PaymentStatus;
+import com.start.overflow.payment.domain.Payer;
 import com.start.overflow.payment.ports.out.OrderPaymentPort;
 import com.start.overflow.payment.ports.out.PaymentGatewayPort;
 import com.start.overflow.payment.ports.out.PaymentRepositoryPort;
@@ -23,18 +24,20 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
 import java.math.BigDecimal;
+import java.time.Instant;
+import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.ArgumentMatchers.anyBoolean;
-import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
 class PaymentServiceTest {
+    private static final Payer PAYER = new Payer(
+            7L, "Maria", "maria@example.com", "52998224725");
     @Mock PaymentRepositoryPort paymentRepository;
     @Mock OrderPaymentPort orderPaymentPort;
     @Mock PaymentGatewayPort paymentGateway;
@@ -53,9 +56,9 @@ class PaymentServiceTest {
         authenticateCustomer();
         when(orderPaymentPort.loadPayableOrder(10L, 7L, false))
                 .thenReturn(new OrderPaymentPort.PayableOrder(
-                        10L, 7L, new BigDecimal("499.90")));
+                        10L, PAYER, new BigDecimal("499.90")));
         when(paymentGateway.createCharge(any(ChargeRequest.class)))
-                .thenReturn(new GatewayChargeResult("gateway-10", true, null));
+                .thenReturn(GatewayChargeResult.approved("gateway-10"));
         when(paymentRepository.save(any(Payment.class)))
                 .thenAnswer(invocation -> invocation.getArgument(0));
 
@@ -76,9 +79,9 @@ class PaymentServiceTest {
         authenticateCustomer();
         when(orderPaymentPort.loadPayableOrder(10L, 7L, false))
                 .thenReturn(new OrderPaymentPort.PayableOrder(
-                        10L, 7L, new BigDecimal("49.90")));
+                        10L, PAYER, new BigDecimal("49.90")));
         when(paymentGateway.createCharge(any(ChargeRequest.class)))
-                .thenReturn(new GatewayChargeResult("declined-10", false, "Sem limite"));
+                .thenReturn(GatewayChargeResult.rejected("declined-10", "Sem limite"));
         when(paymentRepository.save(any(Payment.class)))
                 .thenAnswer(invocation -> invocation.getArgument(0));
 
@@ -91,8 +94,32 @@ class PaymentServiceTest {
     }
 
     @Test
+    void pendingChargeKeepsOrderAwaitingPaymentAndReturnsPaymentUrl() {
+        authenticateCustomer();
+        when(orderPaymentPort.loadPayableOrder(10L, 7L, false))
+                .thenReturn(new OrderPaymentPort.PayableOrder(
+                        10L, PAYER, new BigDecimal("49.90")));
+        when(paymentGateway.createCharge(any(ChargeRequest.class)))
+                .thenReturn(GatewayChargeResult.pending(
+                        "pay_123", "https://sandbox.asaas.com/i/123"));
+        when(paymentRepository.save(any(Payment.class)))
+                .thenAnswer(invocation -> invocation.getArgument(0));
+
+        PaymentResponse response = service.create(
+                new CreatePaymentRequest(10L, PaymentMethod.PIX));
+
+        assertThat(response.status()).isEqualTo(PaymentStatus.PENDING);
+        assertThat(response.paymentUrl()).isEqualTo("https://sandbox.asaas.com/i/123");
+        verify(orderPaymentPort, never()).markOrderPaid(any());
+        verify(orderPaymentPort, never()).cancelOrderAndRestoreStock(any());
+    }
+
+    @Test
     void duplicatePaymentIsRejectedBeforeCallingTheGateway() {
-        when(userService.currentUserEntity()).thenReturn(user);
+        authenticateCustomer();
+        when(orderPaymentPort.loadPayableOrder(10L, 7L, false))
+                .thenReturn(new OrderPaymentPort.PayableOrder(
+                        10L, PAYER, new BigDecimal("49.90")));
         when(paymentRepository.existsByOrderId(10L)).thenReturn(true);
 
         assertThatThrownBy(() -> service.create(
@@ -100,14 +127,31 @@ class PaymentServiceTest {
                 .isInstanceOf(BusinessRuleException.class);
 
         verify(paymentGateway, never()).createCharge(any());
-        verify(orderPaymentPort, never()).loadPayableOrder(anyLong(), anyLong(), anyBoolean());
+        verify(orderPaymentPort).loadPayableOrder(10L, 7L, false);
+    }
+
+    @Test
+    void cancellingPendingPaymentAlsoCancelsExternalCharge() {
+        authenticateCustomer();
+        Instant now = Instant.parse("2026-08-09T12:00:00Z");
+        Payment payment = Payment.restore(30L, 10L, 7L, new BigDecimal("49.90"),
+                PaymentMethod.PIX, "pay_123", "https://sandbox.asaas.com/i/123",
+                PaymentStatus.PENDING, now, now);
+        when(paymentRepository.findByIdForUpdate(30L)).thenReturn(Optional.of(payment));
+        when(paymentRepository.save(payment)).thenReturn(payment);
+
+        PaymentResponse response = service.cancel(30L);
+
+        assertThat(response.status()).isEqualTo(PaymentStatus.CANCELLED);
+        verify(paymentGateway).cancelCharge("pay_123");
+        verify(orderPaymentPort).cancelOrderAndRestoreStock(10L);
     }
 
     @Test
     void gatewayFailureDoesNotPersistOrChangeTheOrder() {
         authenticateCustomer();
         when(orderPaymentPort.loadPayableOrder(10L, 7L, false))
-                .thenReturn(new OrderPaymentPort.PayableOrder(10L, 7L, BigDecimal.TEN));
+                .thenReturn(new OrderPaymentPort.PayableOrder(10L, PAYER, BigDecimal.TEN));
         when(paymentGateway.createCharge(any(ChargeRequest.class)))
                 .thenThrow(new PaymentGatewayUnavailableException("Gateway indisponível"));
 

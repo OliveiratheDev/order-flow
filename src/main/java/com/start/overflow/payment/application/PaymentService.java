@@ -7,6 +7,7 @@ import com.start.overflow.payment.application.dto.CreatePaymentRequest;
 import com.start.overflow.payment.application.dto.PaymentResponse;
 import com.start.overflow.payment.domain.ChargeRequest;
 import com.start.overflow.payment.domain.GatewayChargeResult;
+import com.start.overflow.payment.domain.GatewayChargeStatus;
 import com.start.overflow.payment.domain.Payment;
 import com.start.overflow.payment.domain.PaymentAmount;
 import com.start.overflow.payment.ports.in.CancelPaymentUseCase;
@@ -45,20 +46,20 @@ public class PaymentService implements CreatePaymentUseCase, GetPaymentUseCase, 
     @Transactional
     public PaymentResponse create(CreatePaymentRequest request) {
         AppUser user = userService.currentUserEntity();
+        OrderPaymentPort.PayableOrder order = orderPaymentPort.loadPayableOrder(
+                request.orderId(), user.getId(), user.getRole() == UserRole.ADMIN);
         if (paymentRepository.existsByOrderId(request.orderId())) {
             throw new BusinessRuleException("Já existe um pagamento para este pedido");
         }
-        OrderPaymentPort.PayableOrder order = orderPaymentPort.loadPayableOrder(
-                request.orderId(), user.getId(), user.getRole() == UserRole.ADMIN);
-        Payment payment = Payment.create(order.orderId(), order.customerId(),
+        Payment payment = Payment.create(order.orderId(), order.payer().id(),
                 order.amount(), request.method());
         GatewayChargeResult result = paymentGateway.createCharge(new ChargeRequest(
-                order.orderId(), new PaymentAmount(order.amount()), request.method(),
+                order.orderId(), order.payer(), new PaymentAmount(order.amount()), request.method(),
                 CorrelationIdContext.currentOrCreate()));
         payment.completeCharge(result);
-        if (result.approved()) {
+        if (result.status() == GatewayChargeStatus.APPROVED) {
             orderPaymentPort.markOrderPaid(order.orderId());
-        } else {
+        } else if (result.status() == GatewayChargeStatus.REJECTED) {
             orderPaymentPort.cancelOrderAndRestoreStock(order.orderId());
         }
         Payment saved = paymentRepository.save(payment);
@@ -87,6 +88,7 @@ public class PaymentService implements CreatePaymentUseCase, GetPaymentUseCase, 
         Payment payment = findForUpdateOrThrow(id);
         ensureOwnerOrAdmin(payment, user);
         payment.cancel();
+        paymentGateway.cancelCharge(payment.getExternalId());
         orderPaymentPort.cancelOrderAndRestoreStock(payment.getOrderId());
         return toResponse(paymentRepository.save(payment));
     }
@@ -109,7 +111,8 @@ public class PaymentService implements CreatePaymentUseCase, GetPaymentUseCase, 
 
     private PaymentResponse toResponse(Payment payment) {
         return new PaymentResponse(payment.getId(), payment.getOrderId(), payment.getCustomerId(),
-                payment.getExternalId(), payment.getAmount(), payment.getMethod(), payment.getStatus(),
+                payment.getExternalId(), payment.getPaymentUrl(), payment.getAmount(),
+                payment.getMethod(), payment.getStatus(),
                 payment.getCreatedAt(), payment.getUpdatedAt());
     }
 }

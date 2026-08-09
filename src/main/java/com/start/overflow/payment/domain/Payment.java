@@ -10,12 +10,13 @@ public final class Payment {
     private final PaymentAmount amount;
     private final PaymentMethod method;
     private String externalId;
+    private String paymentUrl;
     private PaymentStatus status;
     private final Instant createdAt;
     private Instant updatedAt;
 
     private Payment(Long id, Long orderId, Long customerId, PaymentAmount amount,
-                    PaymentMethod method, String externalId, PaymentStatus status,
+                    PaymentMethod method, String externalId, String paymentUrl, PaymentStatus status,
                     Instant createdAt, Instant updatedAt) {
         if (orderId == null || customerId == null || amount == null || method == null
                 || status == null || createdAt == null || updatedAt == null) {
@@ -27,6 +28,7 @@ public final class Payment {
         this.amount = amount;
         this.method = method;
         this.externalId = normalizeExternalId(externalId);
+        this.paymentUrl = normalizePaymentUrl(paymentUrl);
         this.status = status;
         this.createdAt = createdAt;
         this.updatedAt = updatedAt;
@@ -35,14 +37,16 @@ public final class Payment {
     public static Payment create(Long orderId, Long customerId,
                                  BigDecimal amount, PaymentMethod method) {
         Instant now = Instant.now();
-        return new Payment(null, orderId, customerId, new PaymentAmount(amount), method, null,
+        return new Payment(null, orderId, customerId, new PaymentAmount(amount), method, null, null,
                 PaymentStatus.PENDING, now, now);
     }
 
     public static Payment restore(Long id, Long orderId, Long customerId,
                                   BigDecimal amount, PaymentMethod method, String externalId,
-                                  PaymentStatus status, Instant createdAt, Instant updatedAt) {
+                                  String paymentUrl, PaymentStatus status, Instant createdAt,
+                                  Instant updatedAt) {
         return new Payment(id, orderId, customerId, new PaymentAmount(amount), method, externalId,
+                paymentUrl,
                 status, createdAt, updatedAt);
     }
 
@@ -52,10 +56,11 @@ public final class Payment {
         }
         ensurePending("Apenas pagamentos pendentes podem receber o resultado do gateway");
         this.externalId = normalizeRequiredExternalId(result.externalId());
-        if (result.approved()) {
-            approve();
-        } else {
-            reject();
+        this.paymentUrl = normalizePaymentUrl(result.paymentUrl());
+        switch (result.status()) {
+            case APPROVED -> approve();
+            case REJECTED -> reject();
+            case PENDING -> touch();
         }
     }
 
@@ -102,12 +107,24 @@ public final class Payment {
         return normalized;
     }
 
+    private static String normalizePaymentUrl(String value) {
+        if (value == null || value.isBlank()) {
+            return null;
+        }
+        String normalized = value.strip();
+        if (normalized.length() > 500) {
+            throw new PaymentException("A URL de pagamento deve ter no máximo 500 caracteres");
+        }
+        return normalized;
+    }
+
     public Long getId() { return id; }
     public Long getOrderId() { return orderId; }
     public Long getCustomerId() { return customerId; }
     public BigDecimal getAmount() { return amount.value(); }
     public PaymentMethod getMethod() { return method; }
     public String getExternalId() { return externalId; }
+    public String getPaymentUrl() { return paymentUrl; }
     public PaymentStatus getStatus() { return status; }
     public Instant getCreatedAt() { return createdAt; }
     public Instant getUpdatedAt() { return updatedAt; }

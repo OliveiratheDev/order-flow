@@ -11,6 +11,7 @@ public record PaymentResponse(
         Long orderId,
         Long customerId,
         String externalId,
+        String paymentUrl,
         BigDecimal amount,
         PaymentMethod method,
         PaymentStatus status,

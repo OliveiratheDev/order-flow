@@ -7,18 +7,23 @@ import org.springframework.context.annotation.Profile;
 import org.springframework.stereotype.Component;
 
 @Component
-@Profile("payment-declined & !payment-http")
+@Profile("payment-declined & !payment-http & !payment-asaas")
 public class DeclinedPaymentGatewayAdapter implements PaymentGatewayPort {
 
     @Override
     public GatewayChargeResult createCharge(ChargeRequest request) {
-        return new GatewayChargeResult("declined-" + request.orderId(), false,
+        return GatewayChargeResult.rejected("declined-" + request.orderId(),
                 "Cobrança recusada pelo simulador");
     }
 
     @Override
     public GatewayChargeResult getCharge(String externalId) {
-        return new GatewayChargeResult(externalId, false,
+        return GatewayChargeResult.rejected(externalId,
                 "Cobrança recusada pelo simulador");
+    }
+
+    @Override
+    public void cancelCharge(String externalId) {
+        // Uma cobrança recusada não precisa ser cancelada no gateway simulado.
     }
 }

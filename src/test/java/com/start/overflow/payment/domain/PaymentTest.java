@@ -23,7 +23,7 @@ class PaymentTest {
     void approvesUsingTheExternalGatewayResult() {
         Payment payment = Payment.create(10L, 20L, BigDecimal.TEN, PaymentMethod.PIX);
 
-        payment.completeCharge(new GatewayChargeResult("gateway-123", true, null));
+        payment.completeCharge(GatewayChargeResult.approved("gateway-123"));
 
         assertThat(payment.getStatus()).isEqualTo(PaymentStatus.APPROVED);
         assertThat(payment.getExternalId()).isEqualTo("gateway-123");
@@ -33,7 +33,7 @@ class PaymentTest {
     void rejectsUsingTheExternalGatewayResult() {
         Payment payment = Payment.create(10L, 20L, BigDecimal.TEN, PaymentMethod.BOLETO);
 
-        payment.completeCharge(new GatewayChargeResult("gateway-456", false, "Sem limite"));
+        payment.completeCharge(GatewayChargeResult.rejected("gateway-456", "Sem limite"));
 
         assertThat(payment.getStatus()).isEqualTo(PaymentStatus.REJECTED);
     }
@@ -41,11 +41,22 @@ class PaymentTest {
     @Test
     void finalPaymentCannotReceiveAnotherGatewayResult() {
         Payment payment = Payment.create(10L, 20L, BigDecimal.TEN, PaymentMethod.PIX);
-        payment.completeCharge(new GatewayChargeResult("gateway-123", true, null));
+        payment.completeCharge(GatewayChargeResult.approved("gateway-123"));
 
         assertThatThrownBy(() -> payment.completeCharge(
-                new GatewayChargeResult("gateway-456", false, "Recusado")))
+                GatewayChargeResult.rejected("gateway-456", "Recusado")))
                 .isInstanceOf(PaymentException.class);
+    }
+
+    @Test
+    void pendingGatewayResultKeepsPaymentPendingWithPaymentUrl() {
+        Payment payment = Payment.create(10L, 20L, BigDecimal.TEN, PaymentMethod.PIX);
+
+        payment.completeCharge(GatewayChargeResult.pending(
+                "pay_123", "https://sandbox.asaas.com/i/123"));
+
+        assertThat(payment.getStatus()).isEqualTo(PaymentStatus.PENDING);
+        assertThat(payment.getPaymentUrl()).isEqualTo("https://sandbox.asaas.com/i/123");
     }
 
     @Test

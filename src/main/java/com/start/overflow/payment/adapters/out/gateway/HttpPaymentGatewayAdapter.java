@@ -2,6 +2,7 @@ package com.start.overflow.payment.adapters.out.gateway;
 
 import com.start.overflow.payment.domain.ChargeRequest;
 import com.start.overflow.payment.domain.GatewayChargeResult;
+import com.start.overflow.payment.domain.GatewayChargeStatus;
 import com.start.overflow.payment.domain.PaymentGatewayUnavailableException;
 import com.start.overflow.payment.domain.PaymentRejectedException;
 import com.start.overflow.payment.ports.out.PaymentGatewayPort;
@@ -16,7 +17,7 @@ import org.springframework.web.client.RestClientResponseException;
 import java.math.BigDecimal;
 
 @Component
-@Profile("payment-http")
+@Profile("payment-http & !payment-declined & !payment-asaas")
 public class HttpPaymentGatewayAdapter implements PaymentGatewayPort {
     private final RestClient restClient;
 
@@ -58,13 +59,26 @@ public class HttpPaymentGatewayAdapter implements PaymentGatewayPort {
         }
     }
 
+    @Override
+    public void cancelCharge(String externalId) {
+        try {
+            restClient.delete()
+                    .uri("/charges/{externalId}", externalId)
+                    .retrieve()
+                    .toBodilessEntity();
+        } catch (RestClientException exception) {
+            throw translate(exception);
+        }
+    }
+
     private GatewayChargeResult toDomain(GatewayResponse response) {
         if (response == null) {
             throw new PaymentGatewayUnavailableException(
                     "O gateway retornou uma resposta vazia");
         }
-        return new GatewayChargeResult(response.externalId(), response.approved(),
-                response.rejectionReason());
+        return new GatewayChargeResult(response.externalId(),
+                response.approved() ? GatewayChargeStatus.APPROVED : GatewayChargeStatus.REJECTED,
+                response.rejectionReason(), null);
     }
 
     private RuntimeException translate(RestClientException exception) {

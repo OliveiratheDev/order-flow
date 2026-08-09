@@ -33,6 +33,9 @@ public class AppUser {
     @Column(nullable = false, length = 160, unique = true)
     private String email;
 
+    @Column(length = 14, unique = true)
+    private String document;
+
     @Column(name = "password_hash", nullable = false, length = 120)
     private String passwordHash;
 
@@ -57,6 +60,10 @@ public class AppUser {
     }
 
     public AppUser(String name, String email, String passwordHash, UserRole role) {
+        this(name, email, null, passwordHash, role);
+    }
+
+    public AppUser(String name, String email, String document, String passwordHash, UserRole role) {
         this.name = normalizeName(name);
         this.email = normalizeEmail(email);
         if (passwordHash == null || passwordHash.isBlank()) {
@@ -64,6 +71,12 @@ public class AppUser {
         }
         if (role == null) {
             throw new ValidationException("O perfil do usuário é obrigatório");
+        }
+        if (role == UserRole.CUSTOMER) {
+            this.document = normalizeDocument(document);
+        } else {
+            this.document = document == null || document.isBlank()
+                    ? null : normalizeDocument(document);
         }
         this.passwordHash = passwordHash;
         this.role = role;
@@ -97,6 +110,17 @@ public class AppUser {
         String normalized = value.strip().toLowerCase(Locale.ROOT);
         if (normalized.length() > 160) {
             throw new ValidationException("O e-mail deve ter no máximo 160 caracteres");
+        }
+        return normalized;
+    }
+
+    public static String normalizeDocument(String value) {
+        if (value == null || value.isBlank()) {
+            throw new ValidationException("O CPF ou CNPJ é obrigatório");
+        }
+        String normalized = value.replaceAll("\\D", "");
+        if (normalized.length() != 11 && normalized.length() != 14) {
+            throw new ValidationException("O CPF ou CNPJ deve possuir 11 ou 14 dígitos");
         }
         return normalized;
     }

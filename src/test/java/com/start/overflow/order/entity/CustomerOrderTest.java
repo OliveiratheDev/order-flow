@@ -119,7 +119,8 @@ class CustomerOrderTest {
     }
 
     private AppUser customer() {
-        return new AppUser("Maria", "maria@example.com", "$2a$12$hash", UserRole.CUSTOMER);
+        return new AppUser("Maria", "maria@example.com", "52998224725",
+                "$2a$12$hash", UserRole.CUSTOMER);
     }
 
     private Product product(BigDecimal price) {

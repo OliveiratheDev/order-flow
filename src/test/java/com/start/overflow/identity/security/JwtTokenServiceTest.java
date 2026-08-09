@@ -46,7 +46,8 @@ class JwtTokenServiceTest {
 
     @Test
     void rejectsTamperedSignature() {
-        AppUser user = new AppUser("Maria", "maria@example.com", "$2a$12$hash", UserRole.CUSTOMER);
+        AppUser user = new AppUser("Maria", "maria@example.com", "52998224725",
+                "$2a$12$hash", UserRole.CUSTOMER);
         ReflectionTestUtils.setField(user, "id", 1L);
         String token = service.issue(user).value();
         char replacement = token.charAt(token.length() - 1) == 'a' ? 'b' : 'a';

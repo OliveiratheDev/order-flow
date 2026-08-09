@@ -7,6 +7,7 @@ import com.start.overflow.order.entity.OrderItem;
 import com.start.overflow.order.entity.OrderStatus;
 import com.start.overflow.order.repository.OrderRepository;
 import com.start.overflow.payment.ports.out.OrderPaymentPort;
+import com.start.overflow.payment.domain.Payer;
 import com.start.overflow.shared.exception.BusinessRuleException;
 import com.start.overflow.shared.exception.ResourceNotFoundException;
 import org.springframework.cache.annotation.CacheEvict;
@@ -33,7 +34,11 @@ public class OrderPaymentAdapter implements OrderPaymentPort {
         if (order.getStatus() != OrderStatus.AWAITING_PAYMENT) {
             throw new BusinessRuleException("O pedido não está aguardando pagamento");
         }
-        return new PayableOrder(order.getId(), order.getCustomer().getId(), order.getTotal());
+        return new PayableOrder(order.getId(), new Payer(
+                order.getCustomer().getId(),
+                order.getCustomer().getName(),
+                order.getCustomer().getEmail(),
+                order.getCustomer().getDocument()), order.getTotal());
     }
 
     @Override

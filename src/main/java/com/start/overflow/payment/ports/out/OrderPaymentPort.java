@@ -1,5 +1,7 @@
 package com.start.overflow.payment.ports.out;
 
+import com.start.overflow.payment.domain.Payer;
+
 import java.math.BigDecimal;
 
 public interface OrderPaymentPort {
@@ -9,6 +11,6 @@ public interface OrderPaymentPort {
 
     void cancelOrderAndRestoreStock(Long orderId);
 
-    record PayableOrder(Long orderId, Long customerId, BigDecimal amount) {
+    record PayableOrder(Long orderId, Payer payer, BigDecimal amount) {
     }
 }

@@ -42,7 +42,8 @@ class OrderServiceTest {
 
     @Test
     void aggregatesItemsLocksProductAndReservesStockOnce() {
-        AppUser customer = new AppUser("Maria", "maria@example.com", "$2a$12$hash", UserRole.CUSTOMER);
+        AppUser customer = new AppUser("Maria", "maria@example.com", "52998224725",
+                "$2a$12$hash", UserRole.CUSTOMER);
         Product product = new Product(new Category("Casa", null), "Produto", "SKU-1", null,
                 BigDecimal.TEN, 10);
         when(userService.currentUserEntity()).thenReturn(customer);
@@ -61,7 +62,8 @@ class OrderServiceTest {
 
     @Test
     void createdOrderStartsAwaitingPayment() {
-        AppUser customer = new AppUser("Maria", "maria@example.com", "$2a$12$hash", UserRole.CUSTOMER);
+        AppUser customer = new AppUser("Maria", "maria@example.com", "52998224725",
+                "$2a$12$hash", UserRole.CUSTOMER);
         Product product = new Product(new Category("Casa", null), "Produto", "SKU-1", null,
                 BigDecimal.TEN, 10);
         when(userService.currentUserEntity()).thenReturn(customer);

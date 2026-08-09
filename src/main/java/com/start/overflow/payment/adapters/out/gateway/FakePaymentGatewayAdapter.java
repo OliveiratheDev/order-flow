@@ -10,7 +10,7 @@ import java.nio.charset.StandardCharsets;
 import java.util.UUID;
 
 @Component
-@Profile("!payment-http & !payment-declined")
+@Profile("!payment-http & !payment-declined & !payment-asaas")
 public class FakePaymentGatewayAdapter implements PaymentGatewayPort {
 
     @Override
@@ -18,11 +18,16 @@ public class FakePaymentGatewayAdapter implements PaymentGatewayPort {
         String source = request.orderId() + ":" + request.method();
         String externalId = "fake-" + UUID.nameUUIDFromBytes(
                 source.getBytes(StandardCharsets.UTF_8));
-        return new GatewayChargeResult(externalId, true, null);
+        return GatewayChargeResult.approved(externalId);
     }
 
     @Override
     public GatewayChargeResult getCharge(String externalId) {
-        return new GatewayChargeResult(externalId, true, null);
+        return GatewayChargeResult.approved(externalId);
+    }
+
+    @Override
+    public void cancelCharge(String externalId) {
+        // O adapter fake não mantém estado externo.
     }
 }
