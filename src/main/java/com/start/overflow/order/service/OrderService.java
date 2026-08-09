@@ -1,7 +1,5 @@
 package com.start.overflow.order.service;
 
-import com.start.overflow.catalog.entity.Product;
-import com.start.overflow.catalog.repository.ProductRepository;
 import com.start.overflow.identity.entity.AppUser;
 import com.start.overflow.identity.entity.UserRole;
 import com.start.overflow.identity.service.UserService;
@@ -11,13 +9,13 @@ import com.start.overflow.order.dto.OrderResponse;
 import com.start.overflow.order.entity.CustomerOrder;
 import com.start.overflow.order.entity.OrderItem;
 import com.start.overflow.order.mapper.OrderMapper;
+import com.start.overflow.order.port.out.OrderCatalogPort;
 import com.start.overflow.order.repository.OrderRepository;
 import com.start.overflow.shared.dto.PageResponse;
 import com.start.overflow.shared.exception.ResourceNotFoundException;
 import com.start.overflow.shared.exception.ValidationException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.cache.annotation.CacheEvict;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
@@ -32,20 +30,19 @@ import java.util.Map;
 public class OrderService {
     private static final Logger log = LoggerFactory.getLogger(OrderService.class);
     private final OrderRepository orderRepository;
-    private final ProductRepository productRepository;
+    private final OrderCatalogPort orderCatalogPort;
     private final UserService userService;
     private final OrderMapper orderMapper;
 
-    public OrderService(OrderRepository orderRepository, ProductRepository productRepository,
+    public OrderService(OrderRepository orderRepository, OrderCatalogPort orderCatalogPort,
                         UserService userService, OrderMapper orderMapper) {
         this.orderRepository = orderRepository;
-        this.productRepository = productRepository;
+        this.orderCatalogPort = orderCatalogPort;
         this.userService = userService;
         this.orderMapper = orderMapper;
     }
 
     @Transactional
-    @CacheEvict(cacheNames = "products", allEntries = true)
     public OrderResponse create(CreateOrderRequest request) {
         AppUser customer = userService.currentUserEntity();
         Map<Long, Integer> quantities = aggregateItems(request.items());
@@ -54,10 +51,8 @@ public class OrderService {
                 .shippingAddress(request.shippingAddress());
 
         quantities.keySet().stream().sorted().forEach(productId -> {
-            Product product = findProductForUpdateOrThrow(productId);
             int quantity = quantities.get(productId);
-            product.reserveStock(quantity);
-            builder.addItem(product, quantity);
+            builder.addItem(orderCatalogPort.reserveStock(productId, quantity), quantity);
         });
 
         CustomerOrder order = builder.build();
@@ -92,13 +87,13 @@ public class OrderService {
     }
 
     @Transactional
-    @CacheEvict(cacheNames = "products", allEntries = true)
     public OrderResponse cancel(Long id) {
         AppUser currentUser = userService.currentUserEntity();
         CustomerOrder order = findForUpdateOrThrow(id);
         ensureOwnerOrAdmin(order, currentUser);
         order.cancel();
         restoreStock(order);
+        orderRepository.save(order);
         return orderMapper.toResponse(order);
     }
 
@@ -131,11 +126,10 @@ public class OrderService {
     private void restoreStock(CustomerOrder order) {
         List<OrderItem> items = order.getItems().stream()
                 .sorted((left, right) -> Long.compare(
-                        left.getProduct().getId(), right.getProduct().getId()))
+                        left.getProductId(), right.getProductId()))
                 .toList();
         for (OrderItem item : items) {
-            Product product = findProductForUpdateOrThrow(item.getProduct().getId());
-            product.restoreStock(item.getQuantity());
+            orderCatalogPort.restoreStock(item.getProductId(), item.getQuantity());
         }
     }
 
@@ -149,11 +143,6 @@ public class OrderService {
                 .orElseThrow(() -> new ResourceNotFoundException("Pedido não encontrado: " + id));
         order.getItems().size();
         return order;
-    }
-
-    private Product findProductForUpdateOrThrow(Long id) {
-        return productRepository.findByIdForUpdate(id)
-                .orElseThrow(() -> new ResourceNotFoundException("Produto não encontrado: " + id));
     }
 
     private void ensureOwnerOrAdmin(CustomerOrder order, AppUser user) {

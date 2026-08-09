@@ -1,6 +1,5 @@
 package com.start.overflow.order.entity;
 
-import com.start.overflow.catalog.entity.Product;
 import com.start.overflow.shared.exception.ValidationException;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
@@ -28,9 +27,8 @@ public class OrderItem {
     @JoinColumn(name = "order_id", nullable = false)
     private CustomerOrder order;
 
-    @ManyToOne(fetch = FetchType.LAZY, optional = false)
-    @JoinColumn(name = "product_id", nullable = false)
-    private Product product;
+    @Column(name = "product_id", nullable = false)
+    private Long productId;
 
     @Column(name = "product_name", nullable = false, length = 120)
     private String productName;
@@ -50,7 +48,7 @@ public class OrderItem {
     protected OrderItem() {
     }
 
-    OrderItem(CustomerOrder order, Product product, int quantity, BigDecimal unitPrice) {
+    OrderItem(CustomerOrder order, OrderProductSnapshot product, int quantity) {
         if (order == null || product == null) {
             throw new ValidationException("Pedido e produto são obrigatórios");
         }
@@ -58,11 +56,11 @@ public class OrderItem {
             throw new ValidationException("A quantidade do item deve ser positiva");
         }
         this.order = order;
-        this.product = product;
-        this.productName = product.getName();
-        this.sku = product.getSku();
+        this.productId = product.productId();
+        this.productName = product.productName();
+        this.sku = product.sku();
         this.quantity = quantity;
-        this.unitPrice = unitPrice.setScale(2, RoundingMode.HALF_UP);
+        this.unitPrice = product.unitPrice().setScale(2, RoundingMode.HALF_UP);
         this.lineTotal = this.unitPrice.multiply(BigDecimal.valueOf(quantity)).setScale(2);
     }
 }

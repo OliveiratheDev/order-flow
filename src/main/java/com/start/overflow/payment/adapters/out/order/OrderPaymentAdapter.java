@@ -1,16 +1,14 @@
 package com.start.overflow.payment.adapters.out.order;
 
-import com.start.overflow.catalog.entity.Product;
-import com.start.overflow.catalog.repository.ProductRepository;
 import com.start.overflow.order.entity.CustomerOrder;
 import com.start.overflow.order.entity.OrderItem;
 import com.start.overflow.order.entity.OrderStatus;
 import com.start.overflow.order.repository.OrderRepository;
+import com.start.overflow.order.port.out.OrderCatalogPort;
 import com.start.overflow.payment.ports.out.OrderPaymentPort;
 import com.start.overflow.payment.domain.Payer;
 import com.start.overflow.shared.exception.BusinessRuleException;
 import com.start.overflow.shared.exception.ResourceNotFoundException;
-import org.springframework.cache.annotation.CacheEvict;
 import org.springframework.stereotype.Component;
 
 import java.util.List;
@@ -18,11 +16,11 @@ import java.util.List;
 @Component
 public class OrderPaymentAdapter implements OrderPaymentPort {
     private final OrderRepository orderRepository;
-    private final ProductRepository productRepository;
+    private final OrderCatalogPort orderCatalogPort;
 
-    public OrderPaymentAdapter(OrderRepository orderRepository, ProductRepository productRepository) {
+    public OrderPaymentAdapter(OrderRepository orderRepository, OrderCatalogPort orderCatalogPort) {
         this.orderRepository = orderRepository;
-        this.productRepository = productRepository;
+        this.orderCatalogPort = orderCatalogPort;
     }
 
     @Override
@@ -43,24 +41,23 @@ public class OrderPaymentAdapter implements OrderPaymentPort {
 
     @Override
     public void markOrderPaid(Long orderId) {
-        findOrderForUpdate(orderId).markPaid();
+        CustomerOrder order = findOrderForUpdate(orderId);
+        order.markPaid();
+        orderRepository.save(order);
     }
 
     @Override
-    @CacheEvict(cacheNames = "products", allEntries = true)
     public void cancelOrderAndRestoreStock(Long orderId) {
         CustomerOrder order = findOrderForUpdate(orderId);
         order.cancel();
         List<OrderItem> items = order.getItems().stream()
                 .sorted((left, right) -> Long.compare(
-                        left.getProduct().getId(), right.getProduct().getId()))
+                        left.getProductId(), right.getProductId()))
                 .toList();
         for (OrderItem item : items) {
-            Product product = productRepository.findByIdForUpdate(item.getProduct().getId())
-                    .orElseThrow(() -> new ResourceNotFoundException(
-                            "Produto não encontrado: " + item.getProduct().getId()));
-            product.restoreStock(item.getQuantity());
+            orderCatalogPort.restoreStock(item.getProductId(), item.getQuantity());
         }
+        orderRepository.save(order);
     }
 
     private CustomerOrder findOrderForUpdate(Long id) {

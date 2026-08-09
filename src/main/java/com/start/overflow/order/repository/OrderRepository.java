@@ -16,8 +16,7 @@ public interface OrderRepository extends JpaRepository<CustomerOrder, Long> {
     @Query("""
             SELECT DISTINCT o FROM CustomerOrder o
             JOIN FETCH o.customer
-            JOIN FETCH o.items i
-            JOIN FETCH i.product
+            JOIN FETCH o.items
             WHERE o.id = :id
             """)
     Optional<CustomerOrder> findDetailedById(@Param("id") Long id);

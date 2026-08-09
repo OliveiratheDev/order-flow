@@ -26,7 +26,7 @@ public class OrderMapper {
 
     private OrderItemResponse toItemResponse(OrderItem item) {
         return new OrderItemResponse(
-                item.getProduct().getId(),
+                item.getProductId(),
                 item.getProductName(),
                 item.getSku(),
                 item.getQuantity(),

@@ -1,7 +1,10 @@
 package com.start.overflow.order.entity;
 
-import com.start.overflow.catalog.entity.Product;
 import com.start.overflow.identity.entity.AppUser;
+import com.start.overflow.order.event.OrderCancelledEvent;
+import com.start.overflow.order.event.OrderCreatedEvent;
+import com.start.overflow.order.event.OrderItemSnapshot;
+import com.start.overflow.order.event.OrderPaidEvent;
 import com.start.overflow.order.state.OrderState;
 import com.start.overflow.shared.exception.ValidationException;
 import jakarta.persistence.CascadeType;
@@ -17,6 +20,7 @@ import jakarta.persistence.JoinColumn;
 import jakarta.persistence.ManyToOne;
 import jakarta.persistence.OneToMany;
 import jakarta.persistence.PostLoad;
+import jakarta.persistence.PostPersist;
 import jakarta.persistence.PrePersist;
 import jakarta.persistence.PreUpdate;
 import jakarta.persistence.Table;
@@ -24,6 +28,7 @@ import jakarta.persistence.Transient;
 import jakarta.persistence.Version;
 import lombok.Getter;
 import org.hibernate.annotations.BatchSize;
+import org.springframework.data.domain.AbstractAggregateRoot;
 
 import java.math.BigDecimal;
 import java.math.RoundingMode;
@@ -31,11 +36,12 @@ import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
+import java.util.UUID;
 
 @Entity
 @Getter
 @Table(name = "customer_order")
-public class CustomerOrder {
+public class CustomerOrder extends AbstractAggregateRoot<CustomerOrder> {
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
@@ -95,7 +101,7 @@ public class CustomerOrder {
         this.status = OrderStatus.CREATED;
         this.state = OrderState.from(status);
         builder.items.forEach(item -> this.items.add(
-                new OrderItem(this, item.product(), item.quantity(), item.product().getPrice())));
+                new OrderItem(this, item.product(), item.quantity())));
         this.subtotal = items.stream().map(OrderItem::getLineTotal)
                 .reduce(BigDecimal.ZERO.setScale(2), BigDecimal::add);
         this.discount = normalizeDiscount(builder.discount);
@@ -115,6 +121,7 @@ public class CustomerOrder {
 
     public void markPaid() {
         transition(state.pay());
+        registerPaidEventIfPersisted();
     }
 
     public void ship() {
@@ -127,6 +134,7 @@ public class CustomerOrder {
 
     public void cancel() {
         transition(state.cancel());
+        registerCancelledEventIfPersisted();
     }
 
     public List<OrderItem> getItems() {
@@ -136,6 +144,16 @@ public class CustomerOrder {
     @PostLoad
     private void restoreState() {
         this.state = OrderState.from(status);
+    }
+
+    @PostPersist
+    private void registerCreatedEvent() {
+        registerEvent(new OrderCreatedEvent(
+                UUID.randomUUID(), id, customer.getId(), total,
+                items.stream().map(item -> new OrderItemSnapshot(
+                        item.getProductId(), item.getProductName(), item.getSku(),
+                        item.getQuantity(), item.getUnitPrice(), item.getLineTotal())).toList(),
+                Instant.now()));
     }
 
     @PrePersist
@@ -153,6 +171,20 @@ public class CustomerOrder {
     private void transition(OrderState nextState) {
         this.state = nextState;
         this.status = nextState.status();
+    }
+
+    private void registerPaidEventIfPersisted() {
+        if (id != null && customer.getId() != null) {
+            registerEvent(new OrderPaidEvent(
+                    UUID.randomUUID(), id, customer.getId(), total, Instant.now()));
+        }
+    }
+
+    private void registerCancelledEventIfPersisted() {
+        if (id != null && customer.getId() != null) {
+            registerEvent(new OrderCancelledEvent(
+                    UUID.randomUUID(), id, customer.getId(), total, Instant.now()));
+        }
     }
 
     private static String normalizeAddress(String value) {
@@ -196,7 +228,7 @@ public class CustomerOrder {
             return this;
         }
 
-        public Builder addItem(Product product, int quantity) {
+        public Builder addItem(OrderProductSnapshot product, int quantity) {
             if (product == null) {
                 throw new ValidationException("O produto é obrigatório");
             }
@@ -212,5 +244,5 @@ public class CustomerOrder {
         }
     }
 
-    private record ItemDraft(Product product, int quantity) { }
+    private record ItemDraft(OrderProductSnapshot product, int quantity) { }
 }
