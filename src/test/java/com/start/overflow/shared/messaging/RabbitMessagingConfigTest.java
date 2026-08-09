@@ -1,21 +1,34 @@
 package com.start.overflow.shared.messaging;
 
+import com.start.overflow.notification.adapter.in.messaging.OrderPaidMessage;
+import com.start.overflow.order.adapter.out.messaging.OrderStatusChangedPayload;
 import org.junit.jupiter.api.Test;
+import org.springframework.amqp.AmqpRejectAndDontRequeueException;
 import org.springframework.amqp.core.Binding;
+import org.springframework.amqp.core.Message;
+import org.springframework.amqp.core.MessageProperties;
 import org.springframework.amqp.core.Queue;
 import org.springframework.amqp.core.TopicExchange;
+import org.springframework.amqp.listener.ConditionalRejectingErrorHandler;
+import org.springframework.amqp.listener.ListenerExecutionFailedException;
 import org.springframework.amqp.rabbit.core.RabbitTemplate;
 import org.springframework.amqp.support.converter.JacksonJsonMessageConverter;
+import org.springframework.amqp.support.converter.MessageConversionException;
 import org.springframework.amqp.support.converter.MessageConverter;
 import org.springframework.beans.factory.SmartInitializingSingleton;
+import org.springframework.boot.retry.RetryPolicySettings;
+import org.springframework.core.ParameterizedTypeReference;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.json.JsonMapper;
 
+import java.math.BigDecimal;
+import java.nio.charset.StandardCharsets;
 import java.time.Instant;
 import java.util.Map;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 
@@ -72,6 +85,25 @@ class RabbitMessagingConfigTest {
     }
 
     @Test
+    void deserializesPublisherPayloadIntoConsumerContract() {
+        JacksonJsonMessageConverter converter =
+                (JacksonJsonMessageConverter) config.rabbitJsonMessageConverter();
+        EventEnvelope<OrderStatusChangedPayload> outbound = new EventEnvelope<>(
+                UUID.randomUUID(), "OrderPaid", 1, Instant.parse("2026-08-09T20:00:00Z"),
+                "correlation-123", new OrderStatusChangedPayload(42L, 7L, BigDecimal.TEN));
+        Message message = converter.toMessage(outbound, new MessageProperties());
+        var targetType = new ParameterizedTypeReference<EventEnvelope<OrderPaidMessage>>() {
+        };
+
+        Object converted = converter.fromMessage(message, targetType);
+
+        assertThat(converted).isInstanceOf(EventEnvelope.class);
+        EventEnvelope<?> envelope = (EventEnvelope<?>) converted;
+        assertThat(envelope.payload()).isInstanceOf(OrderPaidMessage.class);
+        assertThat(((OrderPaidMessage) envelope.payload()).orderId()).isEqualTo(42L);
+    }
+
+    @Test
     void configuresConfirmAndReturnCallbacks() {
         RabbitTemplate rabbitTemplate = mock(RabbitTemplate.class);
 
@@ -80,6 +112,40 @@ class RabbitMessagingConfigTest {
 
         verify(rabbitTemplate).setConfirmCallback(org.mockito.ArgumentMatchers.any());
         verify(rabbitTemplate).setReturnsCallback(org.mockito.ArgumentMatchers.any());
+    }
+
+    @Test
+    void poisonJsonIsClassifiedForImmediateRejection() {
+        JacksonJsonMessageConverter converter =
+                (JacksonJsonMessageConverter) config.rabbitJsonMessageConverter();
+        MessageProperties properties = new MessageProperties();
+        properties.setContentType(MessageProperties.CONTENT_TYPE_JSON);
+        Message poison = new Message("{".getBytes(StandardCharsets.UTF_8), properties);
+
+        assertThatThrownBy(() -> converter.fromMessage(poison))
+                .isInstanceOf(MessageConversionException.class);
+
+        var conversion = new MessageConversionException("JSON inválido");
+        var listenerFailure = new ListenerExecutionFailedException(
+                "Falha de conversão", conversion, poison);
+        assertThatThrownBy(() -> new ConditionalRejectingErrorHandler()
+                .handleError(listenerFailure))
+                .isInstanceOf(AmqpRejectAndDontRequeueException.class);
+    }
+
+    @Test
+    void retriesOnlyTransientListenerFailures() {
+        RetryPolicySettings settings = new RetryPolicySettings();
+        config.rabbitListenerRetrySettingsCustomizer().customize(settings);
+
+        assertThat(settings.getExceptionPredicate()
+                .test(new IllegalStateException("banco indisponível"))).isTrue();
+        assertThat(settings.getExceptionPredicate()
+                .test(new AmqpRejectAndDontRequeueException("evento inválido"))).isFalse();
+        assertThat(settings.getExceptionPredicate()
+                .test(new ListenerExecutionFailedException(
+                        "conversão", new MessageConversionException("JSON inválido"))))
+                .isFalse();
     }
 
     private void assertWorkQueue(Queue queue, String expectedName) {

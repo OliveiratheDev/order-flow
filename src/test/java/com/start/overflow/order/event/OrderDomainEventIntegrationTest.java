@@ -42,7 +42,8 @@ import static org.mockito.Mockito.verifyNoInteractions;
         "spring.cache.type=none",
         "orderflow.payment.reconciliation.cron=0 0 0 1 1 *",
         "orderflow.messaging.rabbit.enabled=true",
-        "orderflow.messaging.rabbit.publisher-confirm-timeout=1s"
+        "orderflow.messaging.rabbit.publisher-confirm-timeout=1s",
+        "spring.rabbitmq.listener.simple.auto-startup=false"
 })
 @Testcontainers(disabledWithoutDocker = true)
 class OrderDomainEventIntegrationTest {
