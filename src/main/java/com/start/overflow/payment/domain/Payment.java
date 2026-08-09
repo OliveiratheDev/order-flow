@@ -90,6 +90,19 @@ public final class Payment {
         touch();
     }
 
+    public void markDivergent(GatewayChargeResult result) {
+        if (result == null) {
+            throw new PaymentException("O resultado do gateway é obrigatório");
+        }
+        ensurePending("Apenas pagamentos pendentes podem ser marcados como divergentes");
+        if (this.externalId == null) {
+            this.externalId = normalizeRequiredExternalId(result.externalId());
+        }
+        this.paymentUrl = normalizePaymentUrl(result.paymentUrl());
+        this.status = PaymentStatus.DIVERGENT;
+        touch();
+    }
+
     private void ensurePending(String message) {
         if (status != PaymentStatus.PENDING) {
             throw new PaymentException(message);

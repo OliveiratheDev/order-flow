@@ -1,10 +1,13 @@
 package com.start.overflow.payment.domain;
 
+import java.math.BigDecimal;
+
 public record GatewayChargeResult(
         String externalId,
         GatewayChargeStatus status,
         String rejectionReason,
-        String paymentUrl
+        String paymentUrl,
+        BigDecimal amount
 ) {
     public GatewayChargeResult {
         if (externalId == null || externalId.isBlank()) {
@@ -19,6 +22,12 @@ public record GatewayChargeResult(
         if (paymentUrl != null && paymentUrl.length() > 500) {
             throw new PaymentException("A URL de pagamento deve ter no máximo 500 caracteres");
         }
+        amount = amount == null ? null : new PaymentAmount(amount).value();
+    }
+
+    public GatewayChargeResult(String externalId, GatewayChargeStatus status,
+                               String rejectionReason, String paymentUrl) {
+        this(externalId, status, rejectionReason, paymentUrl, null);
     }
 
     public static GatewayChargeResult approved(String externalId) {

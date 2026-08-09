@@ -78,7 +78,7 @@ public class HttpPaymentGatewayAdapter implements PaymentGatewayPort {
         }
         return new GatewayChargeResult(response.externalId(),
                 response.approved() ? GatewayChargeStatus.APPROVED : GatewayChargeStatus.REJECTED,
-                response.rejectionReason(), null);
+                response.rejectionReason(), null, response.amount());
     }
 
     private RuntimeException translate(RestClientException exception) {
@@ -93,6 +93,7 @@ public class HttpPaymentGatewayAdapter implements PaymentGatewayPort {
     private record GatewayRequest(Long orderId, BigDecimal amount, String method) {
     }
 
-    private record GatewayResponse(String externalId, boolean approved, String rejectionReason) {
+    private record GatewayResponse(
+            String externalId, boolean approved, String rejectionReason, BigDecimal amount) {
     }
 }

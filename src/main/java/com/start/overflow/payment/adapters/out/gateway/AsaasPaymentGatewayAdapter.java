@@ -140,6 +140,16 @@ public class AsaasPaymentGatewayAdapter implements PaymentGatewayPort {
     }
 
     @Override
+    public Optional<GatewayChargeResult> findChargeForReconciliation(
+            Long orderId, String externalId) {
+        String correlationId = CorrelationIdContext.currentOrCreate();
+        return execute(queryTimeLimiter, queryCircuitBreaker, queryRetry,
+                () -> externalId == null
+                        ? findChargeByReferenceOnce(paymentReference(orderId), correlationId)
+                        : findChargeByExternalIdOnce(externalId, correlationId));
+    }
+
+    @Override
     public void cancelCharge(String externalId) {
         execute(cancelTimeLimiter, cancelCircuitBreaker, null, () -> {
             cancelChargeOnce(externalId);
@@ -177,6 +187,25 @@ public class AsaasPaymentGatewayAdapter implements PaymentGatewayPort {
                     .retrieve()
                     .body(AsaasPaymentResponse.class);
             return toDomain(response);
+        } catch (RestClientException exception) {
+            throw translate(exception);
+        }
+    }
+
+    private Optional<GatewayChargeResult> findChargeByExternalIdOnce(
+            String externalId, String correlationId) {
+        try {
+            AsaasPaymentResponse response = restClient.get()
+                    .uri("/payments/{id}", externalId)
+                    .header(CORRELATION_ID_HEADER, correlationId)
+                    .retrieve()
+                    .body(AsaasPaymentResponse.class);
+            return Optional.of(toDomain(response));
+        } catch (RestClientResponseException exception) {
+            if (exception.getStatusCode().value() == 404) {
+                return Optional.empty();
+            }
+            throw translate(exception);
         } catch (RestClientException exception) {
             throw translate(exception);
         }
@@ -285,7 +314,7 @@ public class AsaasPaymentGatewayAdapter implements PaymentGatewayPort {
         return new GatewayChargeResult(externalId, status,
                 status == GatewayChargeStatus.REJECTED
                         ? "A cobrança foi rejeitada pelo Asaas" : null,
-                response.invoiceUrl());
+                response.invoiceUrl(), response.value());
     }
 
     private GatewayChargeStatus mapStatus(String status) {
@@ -465,7 +494,8 @@ public class AsaasPaymentGatewayAdapter implements PaymentGatewayPort {
     private record AsaasPaymentResponse(
             String id,
             String status,
-            String invoiceUrl
+            String invoiceUrl,
+            BigDecimal value
     ) {
     }
 
