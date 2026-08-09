@@ -158,9 +158,10 @@ Cada requisição recebe `X-Correlation-Id`. Valores seguros enviados pelo clien
 preservados; caso contrário, a API gera um UUID. O identificador aparece na resposta, no MDC,
 nos erros e na chamada ao gateway HTTP.
 
-O Actuator expõe `health`, `info` e `metrics`. No profile `prod`, o Spring Boot escreve logs
-estruturados em JSON no formato Logstash. Prometheus, Grafana e alertas ainda não fazem parte
-desta baseline.
+O Actuator expõe `health`, `info`, `metrics`, estados/eventos de circuit breaker, retry e
+time limiter. Os endpoints além de `health` exigem JWT. No profile `prod`, o Spring Boot
+escreve logs estruturados em JSON no formato Logstash. Prometheus, Grafana e alertas ainda
+não fazem parte desta baseline.
 
 ## Profiles
 
@@ -176,6 +177,19 @@ desta baseline.
 Profiles de gateway complementam o profile de ambiente, por exemplo
 `SPRING_PROFILES_ACTIVE=docker,payment-asaas` no Sandbox ou
 `SPRING_PROFILES_ACTIVE=prod,payment-asaas` em produção.
+
+## Resiliência da cobrança Asaas
+
+O adapter compõe funcionalmente `TimeLimiter → CircuitBreaker → Retry → HTTP`. A composição
+fica fora do domínio e usa circuitos independentes para criação, consulta e cancelamento.
+O pool dedicado é limitado para impedir que lentidão externa consuma todas as threads da API.
+
+O `POST /payments` não recebe retry porque o Asaas não documenta uma chave de idempotência
+para criação. Em falha inconclusiva, o adapter faz uma consulta segura por
+`externalReference`; somente consultas recebem até 3 tentativas com backoff exponencial.
+Se ainda não houver confirmação, a aplicação persiste o pagamento sem `externalId`, em
+`PENDING`, mantém o pedido em `AWAITING_PAYMENT` e informa honestamente que a cobrança será
+processada depois. Esse registro é a entrada da conciliação periódica da OF-043.
 
 ## Webhook financeiro
 

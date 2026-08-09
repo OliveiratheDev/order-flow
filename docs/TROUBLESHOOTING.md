@@ -119,6 +119,22 @@ ASAAS_BASE_URL=https://api-sandbox.asaas.com/v3
 Uma resposta pendente é normal para PIX e boleto: use o campo `paymentUrl` devolvido pela API.
 A confirmação assíncrona ocorre pelo webhook Asaas configurado para a URL pública da API.
 
+## Resposta informa pagamento pendente sem `externalId`
+
+Esse é o fallback esperado quando a criação ficou inconclusiva após timeout/5xx e a consulta
+por `externalReference` também não confirmou a cobrança. O pedido permanece
+`AWAITING_PAYMENT`; não repita manualmente o `POST /payments`, pois isso pode duplicar a
+cobrança. Preserve o registro para a conciliação da OF-043.
+
+## Circuito do Asaas está aberto
+
+Consulte `/actuator/circuitbreakers` e
+`/actuator/metrics/resilience4j.circuitbreaker.state` com JWT administrativo. O circuito abre
+após pelo menos 10 chamadas e taxa de falha igual ou superior a 50%; por 30 segundos, novas
+chamadas falham imediatamente e não acessam a rede. Depois, até 3 chamadas half-open verificam
+se o serviço se recuperou. Investigue credencial, DNS, TLS, timeout e disponibilidade do Asaas
+antes de forçar novas tentativas.
+
 ## Webhook Asaas retorna 401
 
 Confirme que o token configurado no Asaas é exatamente o mesmo de `ASAAS_WEBHOOK_TOKEN`.

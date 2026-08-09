@@ -49,12 +49,32 @@ ASAAS_BASE_URL=https://api-sandbox.asaas.com/v3
 ASAAS_API_KEY=<chave-do-sandbox>
 ASAAS_USER_AGENT=OrderFlow/1.0
 ASAAS_PAYMENT_DUE_DAYS=3
+ASAAS_CONNECT_TIMEOUT=3s
+ASAAS_READ_TIMEOUT=3s
 ASAAS_WEBHOOK_TOKEN=<token-exclusivo-do-webhook>
 ```
 
 O adapter envia a chave no header `access_token`, identifica a aplicação por `User-Agent`,
 reutiliza o cliente pelo `externalReference`, persiste a URL da fatura e cancela a cobrança
 remota quando o pagamento local é cancelado. CPF/CNPJ é obrigatório no cadastro de clientes.
+
+Conexão, leitura e `TimeLimiter` usam limite de 3 segundos. A criação de cobrança não é
+repetida automaticamente: o endpoint do Asaas documenta `externalReference`, mas não uma
+chave de idempotência. Após timeout ou 5xx, a aplicação consulta a cobrança pela referência
+`orderflow-order-<id>`; se o resultado continuar inconclusivo, salva o pagamento como
+`PENDING`, mantém o pedido em `AWAITING_PAYMENT` e devolve `processingMessage` ao cliente.
+O retry exponencial (até 3 tentativas, 500 ms e 1 s de espera) é aplicado somente às consultas
+seguras. Respostas 4xx nunca são repetidas.
+
+Há circuitos independentes para criação, consulta e cancelamento. Cada circuito usa janela
+de 20 chamadas, mínimo de 10, taxa de falha de 50%, abertura por 30 segundos e 3 chamadas em
+half-open. Consulte, com JWT administrativo:
+
+```text
+GET /actuator/circuitbreakers
+GET /actuator/circuitbreakerevents
+GET /actuator/metrics/resilience4j.circuitbreaker.state
+```
 
 No painel/API do Asaas, configure um webhook com:
 
@@ -77,9 +97,9 @@ SPRING_PROFILES_ACTIVE=prod,payment-asaas
 ASAAS_BASE_URL=https://api.asaas.com/v3
 ```
 
-Não ative cobranças reais antes de concluir retries/circuit breaker, conciliação periódica,
-política de retenção do payload e procedimentos operacionais de estorno. Nunca exponha `ASAAS_API_KEY` ou
-`ASAAS_WEBHOOK_TOKEN` em logs, commits ou respostas HTTP.
+Não ative cobranças reais antes de concluir a conciliação periódica da OF-043, a política de
+retenção do payload, os alertas e os procedimentos operacionais de estorno. Nunca exponha
+`ASAAS_API_KEY` ou `ASAAS_WEBHOOK_TOKEN` em logs, commits ou respostas HTTP.
 
 ## Validar a configuração
 
