@@ -159,8 +159,9 @@ curl --fail http://127.0.0.1:8080/actuator/health
 Confirme também:
 
 - containers sem loop de reinício;
-- migrations V1 a V7 aplicadas uma única vez;
+- migrations V1 a V8 aplicadas uma única vez;
 - tabela `shedlock` acessível e métrica de execução da conciliação presente;
+- tabela `order_event_audit` recebendo somente eventos de transações confirmadas;
 - registro e login respondendo sem detalhes internos;
 - logs contendo `correlationId`;
 - PostgreSQL e Redis inacessíveis pela internet;

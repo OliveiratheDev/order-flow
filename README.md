@@ -19,6 +19,7 @@ Ports & Adapters e testes com PostgreSQL e Redis reais via Testcontainers.
 - ajuste e reserva transacional de estoque;
 - criação idempotente de pedidos com Redis;
 - máquina de estados do pedido, do pagamento à entrega;
+- eventos de domínio de pedido vinculados ao commit, com auditoria transacional e métricas;
 - pagamentos com domínio hexagonal, gateway substituível e adapter para o Sandbox Asaas;
 - resiliência financeira com timeout, circuit breaker, retry seguro e fallback pendente;
 - webhook Asaas autenticado, idempotente e auditado, com tratamento de confirmação, recusa
@@ -96,6 +97,7 @@ Leia a [visão técnica detalhada](docs/PROJECT_OVERVIEW.md) e o
 | Repository | Isola consultas e persistência dos casos de uso | [`ProductRepository`](src/main/java/com/start/overflow/catalog/repository/ProductRepository.java) |
 | Mapper | Converte entidades e DTOs sem expor o modelo JPA | [`CategoryMapper`](src/main/java/com/start/overflow/catalog/mapper/CategoryMapper.java) |
 | Aspect | Aplica idempotência como responsabilidade transversal | [`IdempotencyAspect`](src/main/java/com/start/overflow/shared/idempotency/IdempotencyAspect.java) |
+| Observer | Reage a fatos do pedido sem acoplar o service aos consumidores | [`OrderDomainEvent`](src/main/java/com/start/overflow/order/event/OrderDomainEvent.java) |
 
 ## Início rápido com Docker
 
@@ -210,7 +212,7 @@ Os testes de integração sobem PostgreSQL 16 e Redis 7 isolados via Testcontain
 interrompe o build abaixo de 70% de cobertura de linhas. O relatório fica em
 `target/site/jacoco/index.html`.
 
-Última validação local da baseline em 09/08/2026: **107 testes aprovados** e **86,33% de
+Última validação local da baseline em 09/08/2026: **114 testes aprovados** e **86,88% de
 cobertura de linhas**.
 
 ## Configuração e produção
@@ -239,6 +241,7 @@ Pontos importantes:
 - [Architecture Decision Records](docs/adr/README.md)
 - [ADR-001 — Monólito modular com `payment` hexagonal](docs/adr/0001-monolito-modular-com-payment-hexagonal.md)
 - [ADR-002 — Camadas versus arquitetura hexagonal](docs/adr/ADR-002-camadas-vs-hexagonal-em-pagamentos.md)
+- [ADR-003 — Eventos de pedido preservam a consistência transacional](docs/adr/0003-eventos-de-pedido-e-consistencia-transacional.md)
 
 ## Limites conhecidos
 

@@ -173,3 +173,15 @@ Get-Content -Encoding UTF8 README.md
 ```
 
 Isso é uma limitação de exibição do terminal e não altera o conteúdo versionado.
+
+## Evento de pedido não aparece nas métricas
+
+Consulte `orderflow.order.events` com a tag `event.type` (`OrderCreated`, `OrderPaid` ou
+`OrderCancelled`) e procure o `eventId`, `orderId` e `correlationId` nos logs. Um rollback não
+publica o evento, por definição. Se `orderflow.order.event_listener.failures` aumentar, a
+transação principal já foi confirmada, mas um observador pós-commit falhou; investigue a causa
+registrada sem repetir automaticamente o comando de negócio.
+
+A tabela `order_event_audit` é gravada em `BEFORE_COMMIT`. A ausência simultânea do pedido e
+da auditoria indica rollback esperado; pedido confirmado sem auditoria deve ser tratado como
+inconsistência operacional e investigado antes de alterar dados manualmente.

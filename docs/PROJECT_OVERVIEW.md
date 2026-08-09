@@ -72,7 +72,13 @@ stateDiagram-v2
 
 Transições não previstas retornam `422 Unprocessable Content`. Cancelamentos restauram o
 estoque quando aplicável, e o campo JPA `@Version` detecta atualizações concorrentes do
-pedido.
+pedido. O agregado registra fatos imutáveis `OrderCreated`, `OrderPaid` e `OrderCancelled`;
+o service coordena o caso de uso, mas não conhece seus consumidores.
+
+O módulo `order` acessa o estoque por `OrderCatalogPort`. O adapter fica em `catalog`, que
+continua sendo o proprietário da entidade `Product`, do bloqueio pessimista e da invalidação
+do cache. O item do pedido guarda apenas o identificador e o snapshot comercial necessários,
+sem importar entidades do catálogo.
 
 ### `payment`
 
@@ -109,6 +115,7 @@ O schema é propriedade do Flyway e o Hibernate executa apenas `validate`. As mi
 | V5 | CPF/CNPJ de cobrança do cliente e URL externa do pagamento |
 | V6 | auditoria/deduplicação de webhooks e status de pagamento estornado |
 | V7 | status divergente, índice de conciliação e tabela de locks distribuídos |
+| V8 | auditoria transacional dos eventos de domínio de pedido |
 
 `spring.jpa.open-in-view=false` força o carregamento necessário dentro do service e evita
 consultas acidentais durante a serialização. Relações são lazy; queries específicas e batching
@@ -117,6 +124,18 @@ controlam a quantidade de acessos ao banco.
 Na criação do pedido, produtos são consultados com lock pessimista. Estoque, pedido e itens
 são alterados na mesma transação; uma falha provoca rollback. O preço unitário é copiado para
 `order_item`, preservando o histórico mesmo que o catálogo mude depois.
+
+Eventos registrados pelo agregado são publicados pelo repositório Spring Data. A auditoria
+usa `BEFORE_COMMIT`: se não puder ser gravada, pedido e auditoria sofrem rollback juntos. As
+métricas usam `AFTER_COMMIT`, portanto somente observam fatos confirmados. Falhas nesse
+listener pós-commit são capturadas, registradas com contexto e contabilizadas em
+`orderflow.order.event_listener.failures`, sem devolver erro ao cliente depois que a
+transação já foi confirmada.
+
+A reserva e a restauração de estoque permanecem síncronas na transação do caso de uso. Um
+listener `AFTER_COMMIT` seria inadequado para essa invariável: permitiria confirmar um pedido
+sem confirmar sua reserva. A publicação em broker e o risco de dual write são tratados na
+evolução de mensageria, sem enfraquecer a consistência local.
 
 ## Idempotência
 
@@ -234,6 +253,8 @@ A constraint única de `event_id` protege inclusive entregas concorrentes. Valor
 - contrato HTTP: MockMvc com autenticação, autorização, validação e fluxo completo;
 - migrations: Flyway parte de schema vazio em Testcontainers;
 - scheduler: dois provedores ShedLock no mesmo PostgreSQL comprovam exclusão mútua;
+- eventos de domínio: PostgreSQL real comprova execução no commit, ausência no rollback e
+  auditoria das transições criado, pago e cancelado;
 - qualidade: JaCoCo exige pelo menos 70% de linhas no `verify`.
 
 ## Decisões e limites
