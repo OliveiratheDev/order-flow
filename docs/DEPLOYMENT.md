@@ -35,6 +35,15 @@ REDIS_PASSWORD=<outra-senha-aleatoria-forte>
 RABBITMQ_USER=orderflow_app
 RABBITMQ_PASSWORD=<senha-aleatoria-exclusiva-do-rabbitmq>
 RABBITMQ_PUBLISHER_CONFIRM_TIMEOUT=5s
+RABBITMQ_CONSUMER_MAX_RETRIES=2
+RABBITMQ_CONSUMER_RETRY_INITIAL_INTERVAL=1s
+RABBITMQ_CONSUMER_RETRY_MULTIPLIER=2
+RABBITMQ_CONSUMER_RETRY_MAX_INTERVAL=2s
+RABBITMQ_CONSUMER_CONCURRENCY=2
+RABBITMQ_CONSUMER_MAX_CONCURRENCY=5
+RABBITMQ_CONSUMER_PREFETCH=10
+NOTIFICATION_PROCESSED_EVENT_RETENTION=30d
+NOTIFICATION_CLEANUP_CRON="0 0 3 * * *"
 JWT_SECRET=<segredo-aleatorio-com-ao-menos-32-bytes>
 APP_PORT=8080
 SPRING_PROFILES_ACTIVE=prod
@@ -68,6 +77,16 @@ O publicador aguarda confirmação correlacionada por até
 commit; reduzi-lo aumenta falsos timeouts sob latência. Monitore
 `orderflow.messaging.order_event.publications` pelas tags `event.type` e `result`. Falha de
 publicação exige conciliar o `eventId` registrado no log antes de qualquer reenvio manual.
+
+O consumidor de `notification.order-paid` usa ack automático somente após retorno normal. As
+duas repetições configuradas, além da tentativa inicial, produzem três tentativas com backoff
+de 1 e 2 segundos. `default-requeue-rejected=false` envia a falha final à DLQ. Ajuste
+concorrência e prefetch em conjunto: com os padrões, até 50 mensagens podem ficar reservadas
+pelas cinco threads máximas de uma instância.
+
+O PostgreSQL mantém `processed_event` e `notification_delivery`. O job diário expurga ambos
+após `NOTIFICATION_PROCESSED_EVENT_RETENTION`; backup e retenção devem refletir o prazo máximo
+em que a operação pretende reprocessar a DLQ com deduplicação garantida.
 
 ## Gateway de pagamento Asaas
 

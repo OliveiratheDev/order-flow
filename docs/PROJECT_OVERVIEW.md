@@ -178,6 +178,18 @@ decisão atual reduz a janela, mede falhas conhecidas e mantém Outbox como evol
 no ADR-004. O consumo idempotente continua obrigatório porque confirmações e retries oferecem
 entrega *at-least-once*, não *exactly-once*.
 
+O módulo `notification` fecha o fluxo de `OrderPaid`. O listener AMQP só valida o contrato,
+propaga correlação e cria um comando. O service transacional disputa a PK composta
+`processed_event(event_id, consumer)` e persiste a entrega simulada. Duas instâncias podem
+passar pela aplicação ao mesmo tempo, mas apenas uma vence o `INSERT`; a outra reconhece a
+duplicata depois que a primeira transação termina.
+
+Falhas transitórias têm três tentativas totais com backoff exponencial. Falhas de conversão ou
+contrato recebem rejeição sem requeue e seguem para a DLQ declarada no broker. A lógica não
+consulta `OrderCreated` nem o estado atual do pedido, portanto não presume ordenação entre
+eventos. MDC é restaurado ao final para impedir vazamento de correlação entre mensagens da
+mesma thread.
+
 ## Idempotência
 
 `POST /api/v1/orders` é protegido por `@Idempotent`:

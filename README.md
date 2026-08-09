@@ -230,6 +230,37 @@ transação revertida, mas ainda existe uma janela em que o pedido foi confirmad
 não recebeu a mensagem. O [ADR-004](docs/adr/0004-publicacao-pos-commit-e-outbox.md) registra
 esse risco e o Outbox como evolução.
 
+## Consumo e notificação de pagamento
+
+`OrderPaidNotificationListener` consome `notification.order-paid`, restaura o
+`correlationId` no MDC e traduz o envelope para um comando da aplicação. A regra fica no
+`PaymentNotificationService`, sem dependência de RabbitMQ. O e-mail é simulado por um registro
+em `notification_delivery` e por log estruturado.
+
+A entrega é *at-least-once*. `processed_event` usa a chave primária composta
+`(event_id, consumer)` para impedir duas notificações do mesmo consumidor, inclusive quando
+duas threads recebem a mensagem simultaneamente. A reserva e a notificação simulada são
+gravadas na mesma transação; se o efeito falha, a marca também sofre rollback. Um evento
+`OrderPaid` não depende da chegada anterior de `OrderCreated`, portanto funciona fora de
+ordem. O expurgo diário remove marcas e entregas simuladas com mais de 30 dias.
+
+Falhas transitórias têm duas repetições com backoff de 1 e 2 segundos, totalizando três
+tentativas. JSON inválido, versão incompatível e regra determinística são rejeitados sem retry.
+Como `default-requeue-rejected=false`, a rejeição chega a `order.events.dlq` e não entra em
+loop na fila de trabalho.
+
+### Operação da DLQ
+
+- **Alerta:** trate `messages_ready > 0` em `order.events.dlq` como incidente; até a entrega
+  dos dashboards, consulte a Management UI do RabbitMQ.
+- **Diagnóstico:** registre `eventId`, payload, routing key e os headers `x-death`, incluindo
+  fila de origem, motivo e contagem.
+- **Reprocessamento:** corrija a causa, valide a versão do contrato e devolva somente as
+  mensagens selecionadas para a routing key original. A PK de idempotência torna o reenvio
+  seguro dentro da retenção.
+- **Descarte:** remova uma mensagem apenas quando ela não for mais relevante, mantendo um
+  registro operacional do `eventId`, motivo, responsável e data.
+
 ## Testes e qualidade
 
 Com o Docker ativo, execute toda a verificação:
@@ -246,7 +277,7 @@ Os testes de integração sobem PostgreSQL 16 e Redis 7 isolados via Testcontain
 interrompe o build abaixo de 70% de cobertura de linhas. O relatório fica em
 `target/site/jacoco/index.html`.
 
-Última validação local da baseline em 09/08/2026: **122 testes aprovados** e **87,27% de
+Última validação local da baseline em 09/08/2026: **144 testes aprovados** e **87,79% de
 cobertura de linhas**.
 
 ## Configuração e produção
@@ -280,6 +311,6 @@ Pontos importantes:
 
 ## Limites conhecidos
 
-Esta baseline ainda não consome os eventos para gerar notificações; publicação, topologia e
-contratos já estão entregues. Prometheus, Grafana, refresh token e um gateway de pagamento
-contratado também não fazem parte da entrega atual.
+O envio de e-mail é deliberadamente simulado; SMTP/Mailhog não faz parte da entrega atual.
+Prometheus, Grafana, refresh token e um gateway de pagamento contratado também não fazem
+parte da baseline.

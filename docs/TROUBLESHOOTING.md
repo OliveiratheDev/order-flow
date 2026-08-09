@@ -63,6 +63,16 @@ routing key, `eventId`, `eventType` e `eventVersion`; identifique se a causa é 
 incompatível, falha transitória ou bug do consumidor. Corrija a causa e reprocesse apenas os
 eventos registrados. A DLQ deliberadamente não possui outra DLQ, evitando loop infinito.
 
+Profundidade maior que zero exige alerta e triagem. Em `x-death`, confirme `queue`, `reason`,
+`count` e horário. JSON inválido ou versão incompatível não melhora com retry; corrija o
+produtor ou faça uma transformação operacional antes do reenvio. Para falha transitória,
+confirme que banco e consumidor estão saudáveis.
+
+Republique somente para `order.events` com a routing key original depois de registrar os
+`eventId` selecionados. Dentro da retenção de `processed_event`, uma mensagem já concluída é
+ignorada. Para descarte definitivo, registre `eventId`, motivo, responsável e data antes de
+remover a mensagem.
+
 ## Log informa que a mensagem não encontrou binding
 
 `mandatory=true` e publisher returns transformam uma mensagem não roteada em aviso. Compare a
