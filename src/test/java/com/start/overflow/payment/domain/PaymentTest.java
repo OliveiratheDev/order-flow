@@ -70,6 +70,18 @@ class PaymentTest {
     }
 
     @Test
+    void divergentPaymentPreservesKnownExternalIdForManualReview() {
+        Payment payment = Payment.create(10L, 20L, BigDecimal.TEN, PaymentMethod.PIX);
+        payment.completeCharge(GatewayChargeResult.pending("pay_original", null));
+
+        payment.markDivergent(new GatewayChargeResult(
+                "pay_other", GatewayChargeStatus.APPROVED, null, null, BigDecimal.ONE));
+
+        assertThat(payment.getStatus()).isEqualTo(PaymentStatus.DIVERGENT);
+        assertThat(payment.getExternalId()).isEqualTo("pay_original");
+    }
+
+    @Test
     void rejectsNonPositiveAmount() {
         assertThatThrownBy(() -> Payment.create(10L, 20L, BigDecimal.ZERO,
                 PaymentMethod.PIX)).isInstanceOf(PaymentException.class);

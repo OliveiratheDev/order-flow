@@ -145,6 +145,36 @@ class AsaasPaymentGatewayAdapterTest {
     }
 
     @Test
+    void findsUnresolvedChargeByStableOrderReferenceWithGatewayAmount() {
+        server.expect(requestTo(BASE_URL
+                        + "/payments?externalReference=orderflow-order-10&limit=2"))
+                .andExpect(method(HttpMethod.GET))
+                .andRespond(withSuccess("""
+                        {"data":[{"id":"pay_found","status":"CONFIRMED",
+                         "value":149.90}]}
+                        """, MediaType.APPLICATION_JSON));
+
+        var result = adapter.findChargeForReconciliation(10L, null);
+
+        assertThat(result).isPresent();
+        assertThat(result.orElseThrow().amount()).isEqualByComparingTo("149.90");
+        assertThat(result.orElseThrow().status()).isEqualTo(GatewayChargeStatus.APPROVED);
+        server.verify();
+    }
+
+    @Test
+    void treatsMissingExternalChargeAsNotFoundDuringReconciliation() {
+        server.expect(requestTo(BASE_URL + "/payments/pay_missing"))
+                .andExpect(method(HttpMethod.GET))
+                .andRespond(withStatus(HttpStatus.NOT_FOUND));
+
+        var result = adapter.findChargeForReconciliation(10L, "pay_missing");
+
+        assertThat(result).isEmpty();
+        server.verify();
+    }
+
+    @Test
     void cancelsChargeInAsaas() {
         server.expect(requestTo(BASE_URL + "/payments/pay_123"))
                 .andExpect(method(HttpMethod.DELETE))
