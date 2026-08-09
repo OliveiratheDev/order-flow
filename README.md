@@ -1,5 +1,7 @@
 # OrderFlow
 
+[![CI](https://github.com/OliveiratheDev/order-flow/actions/workflows/ci.yml/badge.svg)](https://github.com/OliveiratheDev/order-flow/actions/workflows/ci.yml)
+
 É uma Plataforma de Pedidos e Cobrança para E-commerce — projeto de estudo e portfólio focado no ecossistema Spring completo, arquitetura e padrões de projeto.
 
 ## Pré-requisitos
