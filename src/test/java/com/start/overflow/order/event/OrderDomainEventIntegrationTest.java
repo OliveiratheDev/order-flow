@@ -12,7 +12,11 @@ import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.testcontainers.service.connection.ServiceConnection;
+import org.springframework.amqp.core.MessagePostProcessor;
+import org.springframework.amqp.rabbit.connection.CorrelationData;
+import org.springframework.amqp.rabbit.core.RabbitTemplate;
 import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.support.TransactionTemplate;
 import org.testcontainers.junit.jupiter.Container;
@@ -24,12 +28,21 @@ import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.clearInvocations;
+import static org.mockito.Mockito.doAnswer;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
 
 @SpringBootTest(properties = {
         "orderflow.security.jwt.secret=test-secret-with-at-least-thirty-two-bytes",
         "orderflow.bootstrap.admin.enabled=false",
         "spring.cache.type=none",
-        "orderflow.payment.reconciliation.cron=0 0 0 1 1 *"
+        "orderflow.payment.reconciliation.cron=0 0 0 1 1 *",
+        "orderflow.messaging.rabbit.enabled=true",
+        "orderflow.messaging.rabbit.publisher-confirm-timeout=1s"
 })
 @Testcontainers(disabledWithoutDocker = true)
 class OrderDomainEventIntegrationTest {
@@ -42,11 +55,20 @@ class OrderDomainEventIntegrationTest {
     @Autowired OrderRepository orderRepository;
     @Autowired PlatformTransactionManager transactionManager;
     @Autowired MeterRegistry meterRegistry;
+    @MockitoBean RabbitTemplate rabbitTemplate;
     private TransactionTemplate transactions;
 
     @BeforeEach
     void resetState() {
         transactions = new TransactionTemplate(transactionManager);
+        clearInvocations(rabbitTemplate);
+        doAnswer(invocation -> {
+            CorrelationData correlation = invocation.getArgument(4);
+            correlation.getFuture().complete(new CorrelationData.Confirm(true, null));
+            return null;
+        }).when(rabbitTemplate).convertAndSend(
+                anyString(), anyString(), any(), any(MessagePostProcessor.class),
+                any(CorrelationData.class));
         jdbc.execute("TRUNCATE TABLE order_event_audit, payment, order_item, customer_order, "
                 + "product, category, app_user RESTART IDENTITY CASCADE");
         jdbc.update("INSERT INTO category (name, slug, active) "
@@ -66,6 +88,9 @@ class OrderDomainEventIntegrationTest {
         assertThat(order.getId()).isNotNull();
         assertThat(auditTypes()).containsExactly("OrderCreated");
         assertThat(metric("OrderCreated") - before).isEqualTo(1);
+        verify(rabbitTemplate).convertAndSend(
+                eq("order.events"), eq("order.created"), any(),
+                any(MessagePostProcessor.class), any(CorrelationData.class));
     }
 
     @Test
@@ -83,6 +108,7 @@ class OrderDomainEventIntegrationTest {
         assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM order_event_audit", Long.class))
                 .isZero();
         assertThat(metric("OrderCreated") - before).isZero();
+        verifyNoInteractions(rabbitTemplate);
     }
 
     @Test
@@ -106,6 +132,15 @@ class OrderDomainEventIntegrationTest {
                 .containsExactly("OrderCreated", "OrderPaid", "OrderCancelled");
         assertThat(metric("OrderPaid") - paidBefore).isEqualTo(1);
         assertThat(metric("OrderCancelled") - cancelledBefore).isEqualTo(1);
+        verify(rabbitTemplate).convertAndSend(
+                eq("order.events"), eq("order.created"), any(),
+                any(MessagePostProcessor.class), any(CorrelationData.class));
+        verify(rabbitTemplate).convertAndSend(
+                eq("order.events"), eq("order.paid"), any(),
+                any(MessagePostProcessor.class), any(CorrelationData.class));
+        verify(rabbitTemplate).convertAndSend(
+                eq("order.events"), eq("order.cancelled"), any(),
+                any(MessagePostProcessor.class), any(CorrelationData.class));
     }
 
     private CustomerOrder createCommittedOrder() {
