@@ -19,7 +19,7 @@ Ports & Adapters e testes com PostgreSQL e Redis reais via Testcontainers.
 - ajuste e reserva transacional de estoque;
 - criação idempotente de pedidos com Redis;
 - máquina de estados do pedido, do pagamento à entrega;
-- pagamentos com domínio hexagonal e gateway substituível;
+- pagamentos com domínio hexagonal, gateway substituível e adapter para o Sandbox Asaas;
 - contrato de erros seguro baseado em RFC 9457;
 - Correlation ID propagado na resposta, nos logs e no gateway;
 - Actuator, OpenAPI/Swagger, logs JSON em produção e CI com cobertura mínima.
@@ -49,7 +49,7 @@ instável e substituível.
 flowchart LR
     customer["Pessoa: Cliente"]
     admin["Pessoa: Administrador"]
-    gateway["Sistema externo: Gateway de pagamento"]
+    gateway["Sistema externo: Asaas ou gateway genérico"]
 
     subgraph boundary["Sistema OrderFlow"]
         api["Contêiner: OrderFlow API<br/>Java 21 + Spring Boot 4.1<br/>REST, regras e casos de uso"]
@@ -61,7 +61,7 @@ flowchart LR
     admin -->|"HTTPS / JSON + JWT ADMIN"| api
     api -->|"JDBC / transações"| postgres
     api -->|"RESP / TTL"| redis
-    api -.->|"HTTPS, perfil payment-http"| gateway
+    api -.->|"HTTPS, perfil payment-asaas"| gateway
 ```
 
 Os packages principais são:
@@ -179,6 +179,8 @@ passos pelo Swagger; use o token retornado pelo login no botão **Authorize**.
 - leituras de catálogo e endpoints de autenticação são públicos;
 - alterações de catálogo e envio/entrega de pedidos exigem `ADMIN`;
 - pedidos e pagamentos exigem JWT válido;
+- o cadastro de cliente exige CPF/CNPJ para criar o pagador no gateway, mas esse dado não é
+  devolvido nas respostas públicas;
 - `POST /api/v1/orders` exige `Idempotency-Key` de até 128 caracteres seguros;
 - respostas incluem `X-Correlation-Id`; um valor válido enviado pelo cliente é propagado;
 - falhas seguem `application/problem+json` e não expõem SQL, constraints ou stack traces.
@@ -199,7 +201,7 @@ Os testes de integração sobem PostgreSQL 16 e Redis 7 isolados via Testcontain
 interrompe o build abaixo de 70% de cobertura de linhas. O relatório fica em
 `target/site/jacoco/index.html`.
 
-Última validação local da baseline em 09/08/2026: **60 testes aprovados** e **82,06% de
+Última validação local da baseline em 09/08/2026: **72 testes aprovados** e **83,11% de
 cobertura de linhas**.
 
 ## Configuração e produção
@@ -213,8 +215,9 @@ Pontos importantes:
   desativados;
 - logs do perfil `prod` são JSON e incluem contexto de correlação;
 - o gateway padrão é um simulador determinístico, adequado à demonstração do portfólio;
-- cobranças reais exigem os perfis `prod,payment-http`, URL e chave do fornecedor, além de
-  revisão de timeouts, resiliência, idempotência externa e conformidade;
+- o Sandbox Asaas é ativado com `docker,payment-asaas`; a chave fica somente no `.env`;
+- produção usa `prod,payment-asaas` e `https://api.asaas.com/v3`, mas só deve receber
+  cobranças depois da entrega dos webhooks, resiliência e conciliação planejados;
 - domínio, DNS, certificado TLS e reverse proxy pertencem à infraestrutura de destino e não
   são criados pelo Compose desta baseline.
 

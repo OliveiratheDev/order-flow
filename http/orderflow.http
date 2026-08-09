@@ -19,6 +19,7 @@ X-Correlation-Id: demo-register
 {
   "name": "Cliente Demonstração",
   "email": "cliente-{{$timestamp}}@example.com",
+  "document": "52998224725",
   "password": "Customer123!"
 }
 
@@ -135,6 +136,7 @@ X-Correlation-Id: demo-create-payment
 
 > {%
     client.global.set("paymentId", response.body.id);
+    client.global.set("paymentUrl", response.body.paymentUrl);
 %}
 
 ### 11. Consultar pagamento

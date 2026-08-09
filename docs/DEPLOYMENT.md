@@ -38,22 +38,34 @@ SPRING_PROFILES_ACTIVE=prod
 Não reutilize senha do banco como segredo JWT. Uma alteração de `JWT_SECRET` invalida tokens
 emitidos anteriormente.
 
-## Gateway de pagamento
+## Gateway de pagamento Asaas
 
-O profile `prod` isolado mantém o simulador determinístico do portfólio. Ele não representa
-uma integração financeira real.
-
-Para um fornecedor real, configure:
+O profile de ambiente isolado mantém o simulador determinístico do portfólio. Para usar o
+Sandbox Asaas no Compose local, configure o `.env` sem versioná-lo:
 
 ```dotenv
-SPRING_PROFILES_ACTIVE=prod,payment-http
-PAYMENT_GATEWAY_BASE_URL=https://api.fornecedor.example
-PAYMENT_GATEWAY_API_KEY=<chave-do-fornecedor>
+SPRING_PROFILES_ACTIVE=docker,payment-asaas
+ASAAS_BASE_URL=https://api-sandbox.asaas.com/v3
+ASAAS_API_KEY=<chave-do-sandbox>
+ASAAS_USER_AGENT=OrderFlow/1.0
+ASAAS_PAYMENT_DUE_DAYS=3
+ASAAS_WEBHOOK_TOKEN=<token-exclusivo-do-webhook>
 ```
 
-Antes de aceitar cobranças reais, valide contrato, assinatura/autenticação, timeouts, retries,
-idempotência do fornecedor, webhooks, conciliação, auditoria e requisitos regulatórios. O
-adaptador HTTP desta baseline é uma demonstração arquitetural, não uma integração certificada.
+O adapter envia a chave no header `access_token`, identifica a aplicação por `User-Agent`,
+reutiliza o cliente pelo `externalReference`, persiste a URL da fatura e cancela a cobrança
+remota quando o pagamento local é cancelado. CPF/CNPJ é obrigatório no cadastro de clientes.
+
+Para produção, altere os profiles e a URL:
+
+```dotenv
+SPRING_PROFILES_ACTIVE=prod,payment-asaas
+ASAAS_BASE_URL=https://api.asaas.com/v3
+```
+
+Não ative cobranças reais antes de concluir e validar webhook, retries/circuit breaker,
+conciliação, auditoria e procedimentos de estorno. Nunca exponha `ASAAS_API_KEY` ou
+`ASAAS_WEBHOOK_TOKEN` em logs, commits ou respostas HTTP.
 
 ## Validar a configuração
 
@@ -87,7 +99,7 @@ curl --fail http://127.0.0.1:8080/actuator/health
 Confirme também:
 
 - containers sem loop de reinício;
-- migrations V1 a V4 aplicadas uma única vez;
+- migrations V1 a V5 aplicadas uma única vez;
 - registro e login respondendo sem detalhes internos;
 - logs contendo `correlationId`;
 - PostgreSQL e Redis inacessíveis pela internet;

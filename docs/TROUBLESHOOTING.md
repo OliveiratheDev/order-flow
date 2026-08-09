@@ -103,8 +103,21 @@ um número.
 ## Pagamento sempre é aprovado
 
 Sem um profile de gateway, o adaptador padrão é determinístico e aprovado para permitir a
-demonstração local. Use `payment-declined` para o fluxo de recusa ou `payment-http` com uma
-integração configurada. Não trate o simulador como processamento financeiro real.
+demonstração local. Use `payment-declined` para o fluxo de recusa ou `payment-asaas` com
+`ASAAS_API_KEY` para o Sandbox. Não trate o simulador como processamento financeiro real.
+
+## O profile `payment-asaas` não inicia
+
+Confirme que `SPRING_PROFILES_ACTIVE` inclui o profile de ambiente e `payment-asaas`, que
+`ASAAS_API_KEY` não está vazia e que `ASAAS_BASE_URL` usa HTTPS. No ambiente local esperado:
+
+```dotenv
+SPRING_PROFILES_ACTIVE=docker,payment-asaas
+ASAAS_BASE_URL=https://api-sandbox.asaas.com/v3
+```
+
+Uma resposta pendente é normal para PIX e boleto: use o campo `paymentUrl` devolvido pela API.
+A confirmação assíncrona depende do webhook da demanda OF-041.
 
 ## Caracteres acentuados aparecem incorretamente no PowerShell
 

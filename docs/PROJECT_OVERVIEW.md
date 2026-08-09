@@ -14,7 +14,7 @@ sequenceDiagram
     participant API as OrderFlow API
     participant DB as PostgreSQL
     participant Redis
-    participant Gateway as Gateway de pagamento
+    participant Gateway as Asaas / Gateway
 
     Cliente->>API: POST /orders + Idempotency-Key
     API->>Redis: SET NX chave + hash do payload
@@ -24,7 +24,7 @@ sequenceDiagram
     API-->>Cliente: 201 Created
     Cliente->>API: POST /payments
     API->>Gateway: cria cobrança + Correlation ID
-    Gateway-->>API: aprovada ou recusada
+    Gateway-->>API: pendente, aprovada ou recusada + URL
     API->>DB: persiste pagamento e atualiza pedido
     API-->>Cliente: resultado da cobrança
 ```
@@ -99,6 +99,7 @@ O schema é propriedade do Flyway e o Hibernate executa apenas `validate`. As mi
 | V2 | usuários e papéis |
 | V3 | pedidos, itens, estados e versionamento |
 | V4 | pagamentos e unicidade por pedido |
+| V5 | CPF/CNPJ de cobrança do cliente e URL externa do pagamento |
 
 `spring.jpa.open-in-view=false` força o carregamento necessário dentro do service e evita
 consultas acidentais durante a serialização. Relações são lazy; queries específicas e batching
@@ -165,9 +166,11 @@ desta baseline.
 | `prod` | configuração externa, logs JSON, Swagger e bootstrap desativados |
 | `payment-declined` | simula recusa do gateway para testes manuais |
 | `payment-http` | ativa o adaptador REST e exige URL/chave do fornecedor |
+| `payment-asaas` | ativa o adapter Asaas e exige `ASAAS_API_KEY` |
 
 Profiles de gateway complementam o profile de ambiente, por exemplo
-`SPRING_PROFILES_ACTIVE=prod,payment-http`.
+`SPRING_PROFILES_ACTIVE=docker,payment-asaas` no Sandbox ou
+`SPRING_PROFILES_ACTIVE=prod,payment-asaas` em produção.
 
 ## Estratégia de testes
 
