@@ -50,8 +50,10 @@ class JwtTokenServiceTest {
                 "$2a$12$hash", UserRole.CUSTOMER);
         ReflectionTestUtils.setField(user, "id", 1L);
         String token = service.issue(user).value();
-        char replacement = token.charAt(token.length() - 1) == 'a' ? 'b' : 'a';
-        String tampered = token.substring(0, token.length() - 1) + replacement;
+        String[] segments = token.split("\\.");
+        char replacement = segments[2].charAt(0) == 'a' ? 'b' : 'a';
+        String tamperedSignature = replacement + segments[2].substring(1);
+        String tampered = String.join(".", segments[0], segments[1], tamperedSignature);
 
         assertThatThrownBy(() -> decoder.decode(tampered)).isInstanceOf(JwtException.class);
     }
