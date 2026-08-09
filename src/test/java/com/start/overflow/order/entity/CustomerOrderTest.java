@@ -1,7 +1,5 @@
 package com.start.overflow.order.entity;
 
-import com.start.overflow.catalog.entity.Category;
-import com.start.overflow.catalog.entity.Product;
 import com.start.overflow.identity.entity.AppUser;
 import com.start.overflow.identity.entity.UserRole;
 import com.start.overflow.shared.exception.InvalidTransitionException;
@@ -81,7 +79,7 @@ class CustomerOrderTest {
 
     @Test
     void builderCalculatesSnapshotTotalsOnServer() {
-        Product product = product(new BigDecimal("249.90"));
+        OrderProductSnapshot product = product(new BigDecimal("249.90"));
         CustomerOrder order = CustomerOrder.builder()
                 .customer(customer())
                 .shippingAddress("Rua A, 123")
@@ -123,7 +121,7 @@ class CustomerOrderTest {
                 "$2a$12$hash", UserRole.CUSTOMER);
     }
 
-    private Product product(BigDecimal price) {
-        return new Product(new Category("Eletrônicos", null), "Fone", "FONE-1", null, price, 10);
+    private OrderProductSnapshot product(BigDecimal price) {
+        return new OrderProductSnapshot(1L, "Fone", "FONE-1", price);
     }
 }
