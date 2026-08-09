@@ -1,21 +1,66 @@
 services:
   postgres:
-    image: postgres:16
-    container_name: orderflow-postgres
+    image: postgres:16-alpine
     environment:
-      POSTGRES_DB: orderflow
-      POSTGRES_USER: orderflow
-      POSTGRES_PASSWORD: orderflow
+      POSTGRES_DB: ${DB_NAME:-orderflow}
+      POSTGRES_USER: ${DB_USER:-orderflow}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-orderflow}
     ports:
-      - "5433:5432"
+      - "${POSTGRES_HOST_PORT:-5433}:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    restart: unless-stopped
 
   redis:
-    image: redis:7
-    container_name: orderflow-redis
+    image: redis:7-alpine
+    command: ["redis-server", "--appendonly", "yes"]
     ports:
-      - "6380:6379"
+      - "${REDIS_HOST_PORT:-6380}:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    restart: unless-stopped
+
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    environment:
+      SPRING_PROFILES_ACTIVE: docker
+      DB_URL: jdbc:postgresql://postgres:5432/${DB_NAME:-orderflow}
+      DB_USER: ${DB_USER:-orderflow}
+      DB_PASSWORD: ${DB_PASSWORD:-orderflow}
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      JWT_SECRET: ${JWT_SECRET:-local-only-jwt-secret-change-before-production}
+      BOOTSTRAP_ADMIN_ENABLED: ${BOOTSTRAP_ADMIN_ENABLED:-true}
+      BOOTSTRAP_ADMIN_NAME: ${BOOTSTRAP_ADMIN_NAME:-Local Administrator}
+      BOOTSTRAP_ADMIN_EMAIL: ${BOOTSTRAP_ADMIN_EMAIL:-admin@orderflow.local}
+      BOOTSTRAP_ADMIN_PASSWORD: ${BOOTSTRAP_ADMIN_PASSWORD:-LocalAdmin123!}
+    ports:
+      - "${APP_PORT:-8080}:8080"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--output-document=/dev/null", "http://localhost:8080/actuator/health"]
+      interval: 10s
+      timeout: 3s
+      start_period: 45s
+      retries: 6
+    restart: unless-stopped
 
 volumes:
   postgres_data:
+  redis_data:

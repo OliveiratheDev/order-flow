@@ -1,0 +1,11 @@
+.git
+.github
+.idea
+.vscode
+.env
+.mvn/repository
+target
+docs
+AGENTS.md
+HELP.md
+*.iml

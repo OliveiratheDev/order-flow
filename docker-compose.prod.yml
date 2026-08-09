@@ -1,0 +1,64 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: ${DB_NAME:?DB_NAME é obrigatório}
+      POSTGRES_USER: ${DB_USER:?DB_USER é obrigatório}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:?DB_PASSWORD é obrigatório}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    restart: unless-stopped
+
+  redis:
+    image: redis:7-alpine
+    command: ["redis-server", "--appendonly", "yes", "--requirepass", "${REDIS_PASSWORD:?REDIS_PASSWORD é obrigatório}"]
+    environment:
+      REDISCLI_AUTH: ${REDIS_PASSWORD:?REDIS_PASSWORD é obrigatório}
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    restart: unless-stopped
+
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    environment:
+      SPRING_PROFILES_ACTIVE: ${SPRING_PROFILES_ACTIVE:-prod}
+      DB_URL: jdbc:postgresql://postgres:5432/${DB_NAME:?DB_NAME é obrigatório}
+      DB_USER: ${DB_USER:?DB_USER é obrigatório}
+      DB_PASSWORD: ${DB_PASSWORD:?DB_PASSWORD é obrigatório}
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      REDIS_PASSWORD: ${REDIS_PASSWORD:?REDIS_PASSWORD é obrigatório}
+      REDIS_SSL: "false"
+      JWT_SECRET: ${JWT_SECRET:?JWT_SECRET é obrigatório}
+      PAYMENT_GATEWAY_BASE_URL: ${PAYMENT_GATEWAY_BASE_URL:-}
+      PAYMENT_GATEWAY_API_KEY: ${PAYMENT_GATEWAY_API_KEY:-}
+    ports:
+      - "${APP_PORT:-8080}:8080"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--output-document=/dev/null", "http://localhost:8080/actuator/health"]
+      interval: 15s
+      timeout: 5s
+      start_period: 60s
+      retries: 6
+    restart: unless-stopped
+
+volumes:
+  postgres_data:
+  redis_data:
