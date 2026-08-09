@@ -60,6 +60,16 @@ class PaymentTest {
     }
 
     @Test
+    void approvedPaymentCanBeRefunded() {
+        Payment payment = Payment.create(10L, 20L, BigDecimal.TEN, PaymentMethod.PIX);
+        payment.approve();
+
+        payment.refund();
+
+        assertThat(payment.getStatus()).isEqualTo(PaymentStatus.REFUNDED);
+    }
+
+    @Test
     void rejectsNonPositiveAmount() {
         assertThatThrownBy(() -> Payment.create(10L, 20L, BigDecimal.ZERO,
                 PaymentMethod.PIX)).isInstanceOf(PaymentException.class);
