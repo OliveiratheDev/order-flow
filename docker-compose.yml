@@ -35,7 +35,7 @@ services:
       context: .
       dockerfile: Dockerfile
     environment:
-      SPRING_PROFILES_ACTIVE: docker
+      SPRING_PROFILES_ACTIVE: ${SPRING_PROFILES_ACTIVE:-docker}
       DB_URL: jdbc:postgresql://postgres:5432/${DB_NAME:-orderflow}
       DB_USER: ${DB_USER:-orderflow}
       DB_PASSWORD: ${DB_PASSWORD:-orderflow}
@@ -46,6 +46,11 @@ services:
       BOOTSTRAP_ADMIN_NAME: ${BOOTSTRAP_ADMIN_NAME:-Local Administrator}
       BOOTSTRAP_ADMIN_EMAIL: ${BOOTSTRAP_ADMIN_EMAIL:-admin@orderflow.local}
       BOOTSTRAP_ADMIN_PASSWORD: ${BOOTSTRAP_ADMIN_PASSWORD:-LocalAdmin123!}
+      ASAAS_BASE_URL: ${ASAAS_BASE_URL:-https://api-sandbox.asaas.com/v3}
+      ASAAS_API_KEY: ${ASAAS_API_KEY:-}
+      ASAAS_USER_AGENT: ${ASAAS_USER_AGENT:-OrderFlow/1.0}
+      ASAAS_PAYMENT_DUE_DAYS: ${ASAAS_PAYMENT_DUE_DAYS:-3}
+      ASAAS_WEBHOOK_TOKEN: ${ASAAS_WEBHOOK_TOKEN:-}
     ports:
       - "${APP_PORT:-8080}:8080"
     depends_on:
