@@ -18,7 +18,7 @@ public interface CategoryRepository extends JpaRepository<Category, Long> {
 
     @Query(""" 
             SELECT c FROM Category c
-            WHERE (:name IS NULL OR LOWER (c.name) LIKE LOWER(CONCAT('%', :name, '%')))
+            WHERE (:name = '' OR LOWER(c.name) LIKE LOWER(CONCAT('%', :name, '%')))
             AND (:active IS NULL OR c.active = :active)
             """)
     Page<Category> search(@Param("name") String name, @Param("active") Boolean active, Pageable pageable);

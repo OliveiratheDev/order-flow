@@ -58,7 +58,7 @@ public class ProductService {
     @Transactional(readOnly = true)
     public PageResponse<ProductResponse> search(String name, Long categoryId,
                                                 Boolean active, Pageable pageable) {
-        String normalizedName = name == null || name.isBlank() ? null : name.strip();
+        String normalizedName = name == null || name.isBlank() ? "" : name.strip();
         Pageable bounded = PageRequest.of(pageable.getPageNumber(), Math.min(pageable.getPageSize(), 100),
                 pageable.getSort());
         Page<ProductResponse> result = productRepository

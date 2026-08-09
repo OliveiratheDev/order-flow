@@ -22,7 +22,7 @@ public interface ProductRepository extends JpaRepository<Product, Long> {
     @EntityGraph(attributePaths = "category")
     @Query("""
             SELECT p FROM Product p
-            WHERE (:name IS NULL OR LOWER(p.name) LIKE LOWER(CONCAT('%', :name, '%')))
+            WHERE (:name = '' OR LOWER(p.name) LIKE LOWER(CONCAT('%', :name, '%')))
               AND (:categoryId IS NULL OR p.category.id = :categoryId)
               AND (:active IS NULL OR p.active = :active)
             """)
