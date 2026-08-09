@@ -1,5 +1,7 @@
 package com.start.overflow.identity.security;
 
+import com.start.overflow.shared.observability.AuthenticatedUserMdcFilter;
+import org.springframework.boot.web.servlet.FilterRegistrationBean;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.http.HttpMethod;
@@ -21,6 +23,7 @@ import org.springframework.security.oauth2.jwt.JwtValidators;
 import org.springframework.security.oauth2.server.resource.authentication.JwtAuthenticationConverter;
 import org.springframework.security.oauth2.server.resource.authentication.JwtGrantedAuthoritiesConverter;
 import org.springframework.security.web.SecurityFilterChain;
+import org.springframework.security.oauth2.server.resource.web.authentication.BearerTokenAuthenticationFilter;
 
 import javax.crypto.SecretKey;
 import javax.crypto.spec.SecretKeySpec;
@@ -33,7 +36,8 @@ public class SecurityConfig {
     SecurityFilterChain securityFilterChain(HttpSecurity http,
                                             ProblemAuthenticationEntryPoint authenticationEntryPoint,
                                             ProblemAccessDeniedHandler accessDeniedHandler,
-                                            JwtAuthenticationConverter jwtAuthenticationConverter)
+                                            JwtAuthenticationConverter jwtAuthenticationConverter,
+                                            AuthenticatedUserMdcFilter authenticatedUserMdcFilter)
             throws Exception {
         http
                 .csrf(AbstractHttpConfigurer::disable)
@@ -58,8 +62,19 @@ public class SecurityConfig {
                 .oauth2ResourceServer(oauth2 -> oauth2
                         .jwt(jwt -> jwt.jwtAuthenticationConverter(jwtAuthenticationConverter))
                         .authenticationEntryPoint(authenticationEntryPoint)
-                        .accessDeniedHandler(accessDeniedHandler));
+                        .accessDeniedHandler(accessDeniedHandler))
+                .addFilterAfter(authenticatedUserMdcFilter,
+                        BearerTokenAuthenticationFilter.class);
         return http.build();
+    }
+
+    @Bean
+    FilterRegistrationBean<AuthenticatedUserMdcFilter> disableContainerRegistration(
+            AuthenticatedUserMdcFilter filter) {
+        FilterRegistrationBean<AuthenticatedUserMdcFilter> registration =
+                new FilterRegistrationBean<>(filter);
+        registration.setEnabled(false);
+        return registration;
     }
 
     @Bean

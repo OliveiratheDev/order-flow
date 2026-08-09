@@ -3,6 +3,7 @@ package com.start.overflow.payment.adapters.in.web;
 import com.start.overflow.payment.domain.PaymentException;
 import com.start.overflow.payment.domain.PaymentGatewayUnavailableException;
 import com.start.overflow.payment.domain.PaymentRejectedException;
+import com.start.overflow.shared.observability.CorrelationIdContext;
 import jakarta.servlet.http.HttpServletRequest;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ProblemDetail;
@@ -28,14 +29,14 @@ public class PaymentExceptionHandler {
     @ExceptionHandler(PaymentRejectedException.class)
     public ProblemDetail handleRejected(PaymentRejectedException exception,
                                         HttpServletRequest request) {
-        return problem(HttpStatus.UNPROCESSABLE_ENTITY, "/errors/payment-rejected",
+        return problem(HttpStatus.UNPROCESSABLE_CONTENT, "/errors/payment-rejected",
                 "Cobrança rejeitada", exception.getMessage(), request);
     }
 
     @ExceptionHandler(PaymentException.class)
     public ProblemDetail handlePaymentRule(PaymentException exception,
                                            HttpServletRequest request) {
-        return problem(HttpStatus.UNPROCESSABLE_ENTITY, "/errors/payment-rule",
+        return problem(HttpStatus.UNPROCESSABLE_CONTENT, "/errors/payment-rule",
                 "Regra de pagamento violada", exception.getMessage(), request);
     }
 
@@ -46,6 +47,7 @@ public class PaymentExceptionHandler {
         problem.setTitle(title);
         problem.setInstance(URI.create(request.getRequestURI()));
         problem.setProperty("timestamp", Instant.now());
+        problem.setProperty("correlationId", CorrelationIdContext.currentOrCreate());
         return problem;
     }
 }

@@ -15,6 +15,8 @@ import com.start.overflow.order.repository.OrderRepository;
 import com.start.overflow.shared.dto.PageResponse;
 import com.start.overflow.shared.exception.ResourceNotFoundException;
 import com.start.overflow.shared.exception.ValidationException;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.cache.annotation.CacheEvict;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
@@ -28,6 +30,7 @@ import java.util.Map;
 
 @Service
 public class OrderService {
+    private static final Logger log = LoggerFactory.getLogger(OrderService.class);
     private final OrderRepository orderRepository;
     private final ProductRepository productRepository;
     private final UserService userService;
@@ -59,7 +62,14 @@ public class OrderService {
 
         CustomerOrder order = builder.build();
         order.awaitPayment();
-        return orderMapper.toResponse(orderRepository.saveAndFlush(order));
+        CustomerOrder saved = orderRepository.saveAndFlush(order);
+        log.atInfo()
+                .addKeyValue("orderId", saved.getId())
+                .addKeyValue("customerId", customer.getId())
+                .addKeyValue("orderStatus", saved.getStatus())
+                .addKeyValue("itemCount", saved.getItems().size())
+                .log("Pedido criado");
+        return orderMapper.toResponse(saved);
     }
 
     @Transactional(readOnly = true)

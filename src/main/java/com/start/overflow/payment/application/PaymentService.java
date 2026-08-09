@@ -17,13 +17,15 @@ import com.start.overflow.payment.ports.out.PaymentGatewayPort;
 import com.start.overflow.payment.ports.out.PaymentRepositoryPort;
 import com.start.overflow.shared.exception.BusinessRuleException;
 import com.start.overflow.shared.exception.ResourceNotFoundException;
+import com.start.overflow.shared.observability.CorrelationIdContext;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-import java.util.UUID;
-
 @Service
 public class PaymentService implements CreatePaymentUseCase, GetPaymentUseCase, CancelPaymentUseCase {
+    private static final Logger log = LoggerFactory.getLogger(PaymentService.class);
     private final PaymentRepositoryPort paymentRepository;
     private final OrderPaymentPort orderPaymentPort;
     private final PaymentGatewayPort paymentGateway;
@@ -52,14 +54,21 @@ public class PaymentService implements CreatePaymentUseCase, GetPaymentUseCase, 
                 order.amount(), request.method());
         GatewayChargeResult result = paymentGateway.createCharge(new ChargeRequest(
                 order.orderId(), new PaymentAmount(order.amount()), request.method(),
-                UUID.randomUUID().toString()));
+                CorrelationIdContext.currentOrCreate()));
         payment.completeCharge(result);
         if (result.approved()) {
             orderPaymentPort.markOrderPaid(order.orderId());
         } else {
             orderPaymentPort.cancelOrderAndRestoreStock(order.orderId());
         }
-        return toResponse(paymentRepository.save(payment));
+        Payment saved = paymentRepository.save(payment);
+        log.atInfo()
+                .addKeyValue("paymentId", saved.getId())
+                .addKeyValue("orderId", saved.getOrderId())
+                .addKeyValue("paymentStatus", saved.getStatus())
+                .addKeyValue("gatewayExternalId", saved.getExternalId())
+                .log("Pagamento processado");
+        return toResponse(saved);
     }
 
     @Override
