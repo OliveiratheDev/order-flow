@@ -15,6 +15,7 @@ public record PaymentResponse(
         BigDecimal amount,
         PaymentMethod method,
         PaymentStatus status,
+        String processingMessage,
         Instant createdAt,
         Instant updatedAt
 ) {

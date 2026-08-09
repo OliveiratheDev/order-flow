@@ -148,20 +148,42 @@ class PaymentServiceTest {
     }
 
     @Test
-    void gatewayFailureDoesNotPersistOrChangeTheOrder() {
+    void gatewayFailurePersistsPendingPaymentAndKeepsOrderAwaitingPayment() {
         authenticateCustomer();
         when(orderPaymentPort.loadPayableOrder(10L, 7L, false))
                 .thenReturn(new OrderPaymentPort.PayableOrder(10L, PAYER, BigDecimal.TEN));
         when(paymentGateway.createCharge(any(ChargeRequest.class)))
                 .thenThrow(new PaymentGatewayUnavailableException("Gateway indisponível"));
+        when(paymentRepository.save(any(Payment.class)))
+                .thenAnswer(invocation -> invocation.getArgument(0));
 
-        assertThatThrownBy(() -> service.create(
-                new CreatePaymentRequest(10L, PaymentMethod.PIX)))
-                .isInstanceOf(PaymentGatewayUnavailableException.class);
+        PaymentResponse response = service.create(
+                new CreatePaymentRequest(10L, PaymentMethod.PIX));
 
-        verify(paymentRepository, never()).save(any());
+        assertThat(response.status()).isEqualTo(PaymentStatus.PENDING);
+        assertThat(response.externalId()).isNull();
+        assertThat(response.processingMessage())
+                .contains("Seu pedido foi registrado")
+                .contains("processada em instantes");
+        verify(paymentRepository).save(any(Payment.class));
         verify(orderPaymentPort, never()).markOrderPaid(any());
         verify(orderPaymentPort, never()).cancelOrderAndRestoreStock(any());
+    }
+
+    @Test
+    void cancellingUnresolvedPaymentDoesNotCallGatewayWithoutExternalId() {
+        authenticateCustomer();
+        Instant now = Instant.parse("2026-08-09T12:00:00Z");
+        Payment payment = Payment.restore(30L, 10L, 7L, new BigDecimal("49.90"),
+                PaymentMethod.PIX, null, null, PaymentStatus.PENDING, now, now);
+        when(paymentRepository.findByIdForUpdate(30L)).thenReturn(Optional.of(payment));
+        when(paymentRepository.save(payment)).thenReturn(payment);
+
+        PaymentResponse response = service.cancel(30L);
+
+        assertThat(response.status()).isEqualTo(PaymentStatus.CANCELLED);
+        verify(paymentGateway, never()).cancelCharge(any());
+        verify(orderPaymentPort).cancelOrderAndRestoreStock(10L);
     }
 
     private void authenticateCustomer() {

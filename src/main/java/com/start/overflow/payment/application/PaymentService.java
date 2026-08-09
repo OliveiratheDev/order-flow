@@ -10,6 +10,7 @@ import com.start.overflow.payment.domain.GatewayChargeResult;
 import com.start.overflow.payment.domain.GatewayChargeStatus;
 import com.start.overflow.payment.domain.Payment;
 import com.start.overflow.payment.domain.PaymentAmount;
+import com.start.overflow.payment.domain.PaymentGatewayUnavailableException;
 import com.start.overflow.payment.ports.in.CancelPaymentUseCase;
 import com.start.overflow.payment.ports.in.CreatePaymentUseCase;
 import com.start.overflow.payment.ports.in.GetPaymentUseCase;
@@ -27,6 +28,9 @@ import org.springframework.transaction.annotation.Transactional;
 @Service
 public class PaymentService implements CreatePaymentUseCase, GetPaymentUseCase, CancelPaymentUseCase {
     private static final Logger log = LoggerFactory.getLogger(PaymentService.class);
+    private static final String PENDING_PROCESSING_MESSAGE =
+            "Pagamento temporariamente indisponível. Seu pedido foi registrado e a cobrança "
+                    + "será processada em instantes.";
     private final PaymentRepositoryPort paymentRepository;
     private final OrderPaymentPort orderPaymentPort;
     private final PaymentGatewayPort paymentGateway;
@@ -53,9 +57,21 @@ public class PaymentService implements CreatePaymentUseCase, GetPaymentUseCase, 
         }
         Payment payment = Payment.create(order.orderId(), order.payer().id(),
                 order.amount(), request.method());
-        GatewayChargeResult result = paymentGateway.createCharge(new ChargeRequest(
-                order.orderId(), order.payer(), new PaymentAmount(order.amount()), request.method(),
-                CorrelationIdContext.currentOrCreate()));
+        GatewayChargeResult result;
+        try {
+            result = paymentGateway.createCharge(new ChargeRequest(
+                    order.orderId(), order.payer(), new PaymentAmount(order.amount()),
+                    request.method(), CorrelationIdContext.currentOrCreate()));
+        } catch (PaymentGatewayUnavailableException exception) {
+            Payment saved = paymentRepository.save(payment);
+            log.atWarn()
+                    .addKeyValue("paymentId", saved.getId())
+                    .addKeyValue("orderId", saved.getOrderId())
+                    .addKeyValue("paymentStatus", saved.getStatus())
+                    .addKeyValue("correlationId", CorrelationIdContext.currentOrCreate())
+                    .log("Pagamento registrado para reconciliação após indisponibilidade do gateway");
+            return toResponse(saved, PENDING_PROCESSING_MESSAGE);
+        }
         payment.completeCharge(result);
         if (result.status() == GatewayChargeStatus.APPROVED) {
             orderPaymentPort.markOrderPaid(order.orderId());
@@ -88,7 +104,9 @@ public class PaymentService implements CreatePaymentUseCase, GetPaymentUseCase, 
         Payment payment = findForUpdateOrThrow(id);
         ensureOwnerOrAdmin(payment, user);
         payment.cancel();
-        paymentGateway.cancelCharge(payment.getExternalId());
+        if (payment.getExternalId() != null) {
+            paymentGateway.cancelCharge(payment.getExternalId());
+        }
         orderPaymentPort.cancelOrderAndRestoreStock(payment.getOrderId());
         return toResponse(paymentRepository.save(payment));
     }
@@ -110,9 +128,14 @@ public class PaymentService implements CreatePaymentUseCase, GetPaymentUseCase, 
     }
 
     private PaymentResponse toResponse(Payment payment) {
+        return toResponse(payment, null);
+    }
+
+    private PaymentResponse toResponse(Payment payment, String processingMessage) {
         return new PaymentResponse(payment.getId(), payment.getOrderId(), payment.getCustomerId(),
                 payment.getExternalId(), payment.getPaymentUrl(), payment.getAmount(),
                 payment.getMethod(), payment.getStatus(),
+                processingMessage,
                 payment.getCreatedAt(), payment.getUpdatedAt());
     }
 }
