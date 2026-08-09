@@ -9,6 +9,7 @@ import com.start.overflow.payment.domain.PaymentMethod;
 import com.start.overflow.payment.domain.PaymentRejectedException;
 import com.start.overflow.payment.ports.out.PaymentGatewayPort;
 import com.start.overflow.shared.observability.CorrelationIdContext;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.context.annotation.Profile;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
@@ -32,6 +33,7 @@ public class AsaasPaymentGatewayAdapter implements PaymentGatewayPort {
     private final int paymentDueDays;
     private final Clock clock;
 
+    @Autowired
     public AsaasPaymentGatewayAdapter(RestClient.Builder builder, AsaasProperties properties) {
         this(builder, properties, Clock.systemUTC());
     }
