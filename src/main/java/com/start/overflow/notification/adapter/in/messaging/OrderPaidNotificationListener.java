@@ -27,7 +27,9 @@ public class OrderPaidNotificationListener {
         this.notificationService = notificationService;
     }
 
-    @RabbitListener(queues = RabbitTopology.NOTIFICATION_ORDER_PAID_QUEUE)
+    @RabbitListener(
+            id = "orderPaidNotificationListener",
+            queues = RabbitTopology.NOTIFICATION_ORDER_PAID_QUEUE)
     public void handle(EventEnvelope<OrderPaidMessage> envelope) {
         String previousCorrelationId = MDC.get(CorrelationIdContext.MDC_KEY);
         try {
