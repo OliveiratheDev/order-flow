@@ -166,9 +166,17 @@ usam JSON pelo `JacksonJsonMessageConverter` de Jackson 3, sem serialização bi
 envelope comum contém `eventId`, `eventType`, `eventVersion`, `occurredAt`, `correlationId` e
 `payload`.
 
-Confirms correlacionados verificam a aceitação pelo broker. `mandatory` e publisher returns
-tornam visível em log uma routing key sem binding. Esta etapa entrega infraestrutura e
-contrato; a publicação após commit e o consumo idempotente pertencem às etapas seguintes.
+O adaptador de saída recebe `OrderCreated`, `OrderPaid` e `OrderCancelled` em `AFTER_COMMIT`,
+converte cada fato em payload externo v1 e publica com delivery mode persistente. Confirms
+correlacionados verificam a aceitação pelo broker. `mandatory` e publisher returns tornam
+visível uma routing key sem binding. Falhas não induzem o cliente a repetir uma transação já
+confirmada: envelope completo, routing key e correlação ficam no log, e a métrica
+`orderflow.messaging.order_event.publications` registra sucesso/falha por tipo.
+
+Isso não fecha o dual write. O banco pode confirmar e o processo cair antes de publicar. A
+decisão atual reduz a janela, mede falhas conhecidas e mantém Outbox como evolução registrada
+no ADR-004. O consumo idempotente continua obrigatório porque confirmações e retries oferecem
+entrega *at-least-once*, não *exactly-once*.
 
 ## Idempotência
 

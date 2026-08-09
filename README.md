@@ -21,6 +21,7 @@ Ports & Adapters e testes com PostgreSQL e Redis reais via Testcontainers.
 - máquina de estados do pedido, do pagamento à entrega;
 - eventos de domínio de pedido vinculados ao commit, com auditoria transacional e métricas;
 - topologia RabbitMQ declarada em código, com filas duráveis, roteamento por tópico e DLQ;
+- publicação persistente de eventos criado, pago e cancelado somente após o commit;
 - pagamentos com domínio hexagonal, gateway substituível e adapter para o Sandbox Asaas;
 - resiliência financeira com timeout, circuit breaker, retry seguro e fallback pendente;
 - webhook Asaas autenticado, idempotente e auditado, com tratamento de confirmação, recusa
@@ -206,6 +207,29 @@ passos pelo Swagger; use o token retornado pelo login no botão **Authorize**.
 - respostas incluem `X-Correlation-Id`; um valor válido enviado pelo cliente é propagado;
 - falhas seguem `application/problem+json` e não expõem SQL, constraints ou stack traces.
 
+## Contrato dos eventos de pedido
+
+Todos os eventos são publicados no exchange `order.events` somente em
+`AFTER_COMMIT`. O envelope JSON comum possui `eventId`, `eventType`, `eventVersion`,
+`occurredAt`, `correlationId` e `payload`. A versão inicial de todos os contratos é `1`.
+
+| Evento | Routing key | Payload v1 | Gatilho | Filas atuais |
+|---|---|---|---|---|
+| `OrderCreated` | `order.created` | `orderId`, `customerId`, `total`, `items[]` | pedido persistido | `notification.order-created`, `audit.queue` |
+| `OrderPaid` | `order.paid` | `orderId`, `customerId`, `total` | pagamento confirmado | `notification.order-paid`, `audit.queue` |
+| `OrderCancelled` | `order.cancelled` | `orderId`, `customerId`, `total` | cancelamento confirmado | `audit.queue` |
+
+Cada item de `OrderCreated` contém `productId`, `productName`, `sku`, `quantity`,
+`unitPrice` e `lineTotal`. Mensagens usam delivery mode persistente; o publicador aguarda o
+confirm correlacionado por até `RABBITMQ_PUBLISHER_CONFIRM_TIMEOUT` e trata retorno sem
+binding como falha. A falha é registrada com o envelope necessário para operação manual e na
+métrica `orderflow.messaging.order_event.publications` (`event.type` e `result`).
+
+O commit PostgreSQL e a publicação AMQP não são atômicos. `AFTER_COMMIT` impede evento de
+transação revertida, mas ainda existe uma janela em que o pedido foi confirmado e o broker
+não recebeu a mensagem. O [ADR-004](docs/adr/0004-publicacao-pos-commit-e-outbox.md) registra
+esse risco e o Outbox como evolução.
+
 ## Testes e qualidade
 
 Com o Docker ativo, execute toda a verificação:
@@ -222,7 +246,7 @@ Os testes de integração sobem PostgreSQL 16 e Redis 7 isolados via Testcontain
 interrompe o build abaixo de 70% de cobertura de linhas. O relatório fica em
 `target/site/jacoco/index.html`.
 
-Última validação local da baseline em 09/08/2026: **119 testes aprovados** e **86,97% de
+Última validação local da baseline em 09/08/2026: **122 testes aprovados** e **87,27% de
 cobertura de linhas**.
 
 ## Configuração e produção
@@ -252,9 +276,10 @@ Pontos importantes:
 - [ADR-001 — Monólito modular com `payment` hexagonal](docs/adr/0001-monolito-modular-com-payment-hexagonal.md)
 - [ADR-002 — Camadas versus arquitetura hexagonal](docs/adr/ADR-002-camadas-vs-hexagonal-em-pagamentos.md)
 - [ADR-003 — Eventos de pedido preservam a consistência transacional](docs/adr/0003-eventos-de-pedido-e-consistencia-transacional.md)
+- [ADR-004 — Publicação pós-commit com Outbox como evolução](docs/adr/0004-publicacao-pos-commit-e-outbox.md)
 
 ## Limites conhecidos
 
-Esta baseline ainda não publica nem consome os eventos no RabbitMQ; ela entrega a topologia
-e o contrato que sustentam essa evolução. Prometheus, Grafana, refresh token e um gateway de
-pagamento contratado também não fazem parte da entrega atual.
+Esta baseline ainda não consome os eventos para gerar notificações; publicação, topologia e
+contratos já estão entregues. Prometheus, Grafana, refresh token e um gateway de pagamento
+contratado também não fazem parte da entrega atual.

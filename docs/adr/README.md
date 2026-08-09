@@ -23,3 +23,4 @@ sem renumerar decisões aceitas.
 | [ADR-001](0001-monolito-modular-com-payment-hexagonal.md) | Aceito | Monólito modular com `payment` em arquitetura hexagonal | OF-005 |
 | [ADR-002](ADR-002-camadas-vs-hexagonal-em-pagamentos.md) | Aceito | Camadas versus Ports & Adapters em pagamentos | OF-040 |
 | [ADR-003](0003-eventos-de-pedido-e-consistencia-transacional.md) | Aceito | Eventos de pedido preservam a consistência transacional | OF-033 |
+| [ADR-004](0004-publicacao-pos-commit-e-outbox.md) | Aceito | Publicação pós-commit com Outbox como evolução | OF-051 |

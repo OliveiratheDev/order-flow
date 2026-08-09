@@ -34,6 +34,7 @@ DB_PASSWORD=<senha-aleatoria-forte>
 REDIS_PASSWORD=<outra-senha-aleatoria-forte>
 RABBITMQ_USER=orderflow_app
 RABBITMQ_PASSWORD=<senha-aleatoria-exclusiva-do-rabbitmq>
+RABBITMQ_PUBLISHER_CONFIRM_TIMEOUT=5s
 JWT_SECRET=<segredo-aleatorio-com-ao-menos-32-bytes>
 APP_PORT=8080
 SPRING_PROFILES_ACTIVE=prod
@@ -61,6 +62,12 @@ Quando a DLQ acumular, não republique tudo automaticamente. Primeiro inspecione
 `x-death`, routing key, versão e payload; corrija a causa; registre os `eventId` afetados; e
 somente então faça reprocessamento controlado. Mantenha backup do volume `rabbitmq_data` de
 acordo com a criticidade das mensagens.
+
+O publicador aguarda confirmação correlacionada por até
+`RABBITMQ_PUBLISHER_CONFIRM_TIMEOUT`. Aumentar esse valor prolonga a resposta HTTP depois do
+commit; reduzi-lo aumenta falsos timeouts sob latência. Monitore
+`orderflow.messaging.order_event.publications` pelas tags `event.type` e `result`. Falha de
+publicação exige conciliar o `eventId` registrado no log antes de qualquer reenvio manual.
 
 ## Gateway de pagamento Asaas
 

@@ -69,6 +69,17 @@ eventos registrados. A DLQ deliberadamente não possui outra DLQ, evitando loop 
 routing key com os bindings declarados em `RabbitTopology`. Não crie binding manual pelo
 console: ajuste a configuração versionada, faça deploy e confirme a topologia no broker.
 
+## Evento de pedido falhou ao publicar
+
+Procure `Falha ao publicar evento de pedido` pelo `eventId` ou `correlationId` e consulte a
+métrica `orderflow.messaging.order_event.publications` com `result=failure`. O pedido já foi
+confirmado porque a publicação ocorre em `AFTER_COMMIT`; não repita o comando HTTP.
+
+Valide conexão, confirmação do broker e retorno de routing. O log inclui envelope e routing
+key para um reprocessamento operacional controlado. Antes de reenviar, confirme que o mesmo
+`eventId` não chegou ao consumidor: a janela de confirmação pode produzir entrega duplicada,
+e o consumidor deve ser idempotente.
+
 ## `JWT_SECRET é obrigatório` ou possui menos de 32 bytes
 
 O segredo não tem fallback na aplicação. Defina um valor local antes de executar pelo Maven:
