@@ -3,6 +3,7 @@ package com.start.overflow.payment.adapters.in.web;
 import com.start.overflow.payment.domain.PaymentException;
 import com.start.overflow.payment.domain.PaymentGatewayUnavailableException;
 import com.start.overflow.payment.domain.PaymentRejectedException;
+import com.start.overflow.payment.domain.PaymentGatewayRequestException;
 import com.start.overflow.shared.observability.CorrelationIdContext;
 import jakarta.servlet.http.HttpServletRequest;
 import org.springframework.http.HttpStatus;
@@ -31,6 +32,13 @@ public class PaymentExceptionHandler {
                                         HttpServletRequest request) {
         return problem(HttpStatus.UNPROCESSABLE_CONTENT, "/errors/payment-rejected",
                 "Cobrança rejeitada", exception.getMessage(), request);
+    }
+
+    @ExceptionHandler(PaymentGatewayRequestException.class)
+    public ProblemDetail handleGatewayRequest(PaymentGatewayRequestException exception,
+                                              HttpServletRequest request) {
+        return problem(HttpStatus.BAD_GATEWAY, "/errors/payment-gateway-request",
+                "Falha permanente no gateway de pagamento", exception.getMessage(), request);
     }
 
     @ExceptionHandler(PaymentException.class)

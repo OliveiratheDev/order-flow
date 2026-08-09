@@ -82,6 +82,15 @@ class ApplicationHttpIntegrationTest {
         String customerToken = token(registerCustomer("cliente@example.com"));
         String adminToken = token(login(ADMIN_EMAIL, ADMIN_PASSWORD));
 
+        mockMvc.perform(get("/actuator/circuitbreakers")
+                        .header("Authorization", bearer(adminToken)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.circuitBreakers.length()").value(3));
+        mockMvc.perform(get("/actuator/metrics/resilience4j.circuitbreaker.state")
+                        .header("Authorization", bearer(adminToken)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.name").value("resilience4j.circuitbreaker.state"));
+
         mockMvc.perform(get("/api/v1/auth/me").header("Authorization", bearer(customerToken)))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.email").value("cliente@example.com"));
