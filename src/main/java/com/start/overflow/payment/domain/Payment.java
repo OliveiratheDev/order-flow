@@ -82,6 +82,14 @@ public final class Payment {
         touch();
     }
 
+    public void refund() {
+        if (status != PaymentStatus.APPROVED) {
+            throw new PaymentException("Apenas pagamentos aprovados podem ser estornados");
+        }
+        this.status = PaymentStatus.REFUNDED;
+        touch();
+    }
+
     private void ensurePending(String message) {
         if (status != PaymentStatus.PENDING) {
             throw new PaymentException(message);

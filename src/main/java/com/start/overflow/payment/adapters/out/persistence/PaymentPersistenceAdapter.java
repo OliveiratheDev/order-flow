@@ -39,6 +39,11 @@ public class PaymentPersistenceAdapter implements PaymentRepositoryPort {
     }
 
     @Override
+    public Optional<Payment> findByExternalIdForUpdate(String externalId) {
+        return repository.findByExternalIdForUpdate(externalId).map(PaymentJpaEntity::toDomain);
+    }
+
+    @Override
     public boolean existsByOrderId(Long orderId) {
         return repository.existsByOrderId(orderId);
     }

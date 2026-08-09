@@ -11,5 +11,7 @@ public interface PaymentRepositoryPort {
 
     Optional<Payment> findByIdForUpdate(Long id);
 
+    Optional<Payment> findByExternalIdForUpdate(String externalId);
+
     boolean existsByOrderId(Long orderId);
 }

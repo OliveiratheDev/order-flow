@@ -14,4 +14,9 @@ interface SpringDataPaymentRepository extends JpaRepository<PaymentJpaEntity, Lo
     @Lock(LockModeType.PESSIMISTIC_WRITE)
     @Query("SELECT p FROM PaymentJpaEntity p WHERE p.id = :id")
     Optional<PaymentJpaEntity> findByIdForUpdate(@Param("id") Long id);
+
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @Query("SELECT p FROM PaymentJpaEntity p WHERE p.externalId = :externalId")
+    Optional<PaymentJpaEntity> findByExternalIdForUpdate(
+            @Param("externalId") String externalId);
 }

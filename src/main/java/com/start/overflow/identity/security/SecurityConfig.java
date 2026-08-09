@@ -46,6 +46,8 @@ public class SecurityConfig {
                 .authorizeHttpRequests(authorize -> authorize
                         .requestMatchers(HttpMethod.POST, "/api/v1/auth/register", "/api/v1/auth/login")
                         .permitAll()
+                        .requestMatchers(HttpMethod.POST, "/api/v1/webhooks/asaas")
+                        .permitAll()
                         .requestMatchers("/actuator/health",
                                 "/v3/api-docs/**", "/swagger-ui.html", "/swagger-ui/**")
                         .permitAll()

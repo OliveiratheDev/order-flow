@@ -28,7 +28,11 @@ public class OpenApiConfig {
                         .addSecuritySchemes("bearerAuth", new SecurityScheme()
                                 .type(SecurityScheme.Type.HTTP)
                                 .scheme("bearer")
-                                .bearerFormat("JWT")))
+                                .bearerFormat("JWT"))
+                        .addSecuritySchemes("asaasWebhookToken", new SecurityScheme()
+                                .type(SecurityScheme.Type.APIKEY)
+                                .in(SecurityScheme.In.HEADER)
+                                .name("asaas-access-token")))
                 .servers(List.of(
                         new Server().url("/").description("Servidor atual")
                 ));
