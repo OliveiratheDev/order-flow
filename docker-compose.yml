@@ -30,6 +30,23 @@ services:
       retries: 10
     restart: unless-stopped
 
+  rabbitmq:
+    image: rabbitmq:3-management-alpine
+    environment:
+      RABBITMQ_DEFAULT_USER: ${RABBITMQ_USER:-orderflow}
+      RABBITMQ_DEFAULT_PASS: ${RABBITMQ_PASSWORD:-orderflow}
+    ports:
+      - "${RABBITMQ_AMQP_HOST_PORT:-5672}:5672"
+      - "${RABBITMQ_MANAGEMENT_HOST_PORT:-15672}:15672"
+    volumes:
+      - rabbitmq_data:/var/lib/rabbitmq
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "-q", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    restart: unless-stopped
+
   app:
     build:
       context: .
@@ -41,6 +58,11 @@ services:
       DB_PASSWORD: ${DB_PASSWORD:-orderflow}
       REDIS_HOST: redis
       REDIS_PORT: 6379
+      RABBITMQ_ENABLED: "true"
+      RABBITMQ_HOST: rabbitmq
+      RABBITMQ_PORT: 5672
+      RABBITMQ_USER: ${RABBITMQ_USER:-orderflow}
+      RABBITMQ_PASSWORD: ${RABBITMQ_PASSWORD:-orderflow}
       JWT_SECRET: ${JWT_SECRET:-local-only-jwt-secret-change-before-production}
       BOOTSTRAP_ADMIN_ENABLED: ${BOOTSTRAP_ADMIN_ENABLED:-true}
       BOOTSTRAP_ADMIN_NAME: ${BOOTSTRAP_ADMIN_NAME:-Local Administrator}
@@ -66,6 +88,8 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
     healthcheck:
       test: ["CMD", "wget", "--quiet", "--output-document=/dev/null", "http://localhost:8080/actuator/health"]
       interval: 10s
@@ -77,3 +101,4 @@ services:
 volumes:
   postgres_data:
   redis_data:
+  rabbitmq_data:

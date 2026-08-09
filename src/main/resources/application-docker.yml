@@ -7,11 +7,24 @@ spring:
     redis:
       host: ${REDIS_HOST:redis}
       port: ${REDIS_PORT:6379}
+  rabbitmq:
+    host: ${RABBITMQ_HOST:rabbitmq}
+    port: ${RABBITMQ_PORT:5672}
+    username: ${RABBITMQ_USER:orderflow}
+    password: ${RABBITMQ_PASSWORD:orderflow}
 
 orderflow:
+  messaging:
+    rabbit:
+      enabled: ${RABBITMQ_ENABLED:true}
   bootstrap:
     admin:
       enabled: ${BOOTSTRAP_ADMIN_ENABLED:true}
       name: ${BOOTSTRAP_ADMIN_NAME:Local Administrator}
       email: ${BOOTSTRAP_ADMIN_EMAIL:admin@orderflow.local}
       password: ${BOOTSTRAP_ADMIN_PASSWORD}
+
+management:
+  health:
+    rabbit:
+      enabled: ${RABBITMQ_ENABLED:true}

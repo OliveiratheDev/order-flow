@@ -10,8 +10,16 @@ spring:
       password: ${REDIS_PASSWORD}
       ssl:
         enabled: ${REDIS_SSL:false}
+  rabbitmq:
+    host: ${RABBITMQ_HOST}
+    port: ${RABBITMQ_PORT:5672}
+    username: ${RABBITMQ_USER}
+    password: ${RABBITMQ_PASSWORD}
 
 orderflow:
+  messaging:
+    rabbit:
+      enabled: true
   bootstrap:
     admin:
       enabled: false
@@ -26,3 +34,8 @@ logging:
   structured:
     format:
       console: logstash
+
+management:
+  health:
+    rabbit:
+      enabled: true

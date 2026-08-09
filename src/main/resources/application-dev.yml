@@ -7,8 +7,17 @@ spring:
     redis:
       host: localhost
       port: 6380
+  rabbitmq:
+    host: localhost
+    port: ${RABBITMQ_PORT:5672}
+    username: ${RABBITMQ_USER:orderflow}
+    password: ${RABBITMQ_PASSWORD:orderflow}
 
 orderflow:
+  messaging:
+    rabbit:
+      enabled: ${RABBITMQ_ENABLED:true}
+
   bootstrap:
     admin:
       enabled: true
@@ -19,3 +28,8 @@ orderflow:
 logging:
   level:
     com.start.overflow: INFO
+
+management:
+  health:
+    rabbit:
+      enabled: ${RABBITMQ_ENABLED:true}
