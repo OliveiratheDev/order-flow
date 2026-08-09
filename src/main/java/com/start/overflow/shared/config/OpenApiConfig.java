@@ -23,14 +23,14 @@ public class OpenApiConfig {
                         .description("Plataforma de pedidos e cobrança")
                         .contact(new Contact()
                                 .name("Gabriel")
-                                .email("seu-email@exemplo.com")))
+                                .url("https://github.com/OliveiratheDev/order-flow")))
                 .components(new Components()
                         .addSecuritySchemes("bearerAuth", new SecurityScheme()
                                 .type(SecurityScheme.Type.HTTP)
                                 .scheme("bearer")
                                 .bearerFormat("JWT")))
                 .servers(List.of(
-                        new Server().url("http://localhost:8080").description("Ambiente local")
+                        new Server().url("/").description("Servidor atual")
                 ));
     }
 }
