@@ -3,9 +3,9 @@
 ## Escopo deste guia
 
 O repositório entrega uma imagem Docker da API e um Compose de produção com OrderFlow,
-PostgreSQL, Redis e RabbitMQ. Provisionamento da VPS, DNS, TLS, firewall, backups externos e
-gerenciador de segredos dependem da plataforma escolhida e não são automatizados nesta
-baseline.
+PostgreSQL, Redis, RabbitMQ, Prometheus e Grafana. Provisionamento da VPS, DNS, TLS, firewall,
+backups externos e gerenciador de segredos dependem da plataforma escolhida e não são
+automatizados nesta baseline.
 
 ## Artefatos
 
@@ -46,6 +46,8 @@ NOTIFICATION_PROCESSED_EVENT_RETENTION=30d
 NOTIFICATION_CLEANUP_CRON="0 0 3 * * *"
 JWT_SECRET=<segredo-aleatorio-com-ao-menos-32-bytes>
 APP_PORT=8080
+GRAFANA_ADMIN_USER=<usuario-operacional>
+GRAFANA_ADMIN_PASSWORD=<senha-aleatoria-exclusiva-do-grafana>
 SPRING_PROFILES_ACTIVE=prod
 ```
 
@@ -177,6 +179,25 @@ métricas ao canal de alertas e aprovar os procedimentos operacionais de diverg�
 estorno. Nunca exponha `ASAAS_API_KEY` ou `ASAAS_WEBHOOK_TOKEN` em logs, commits ou respostas
 HTTP.
 
+## Prometheus e Grafana
+
+A aplicação usa a porta `8080` para a API e a porta interna `9090` para o Actuator. O
+Prometheus acessa `app:9090/actuator/prometheus`; nem o Actuator, nem Prometheus, nem Grafana
+são publicados no host pelo Compose de produção. Publique o Grafana somente por reverse proxy
+autenticado e HTTPS, se o acesso remoto for necessário.
+
+Arquivos versionados:
+
+- `infra/prometheus/prometheus.yml`: coleta e intervalo de avaliação;
+- `infra/prometheus/alerts.yml`: cinco regras operacionais;
+- `infra/grafana/provisioning`: fonte de dados e carregamento de dashboards;
+- `infra/grafana/dashboards/orderflow-overview.json`: dashboard principal.
+
+O Compose persiste séries e configuração operacional nos volumes `prometheus_data` e
+`grafana_data`. Defina retenção, capacidade e backup conforme o período exigido pela operação.
+O provisionamento versionado recria a fonte e o dashboard, mas não substitui a retenção das
+séries históricas.
+
 ## Validar a configuração
 
 O Compose deve resolver todas as variáveis obrigatórias sem iniciar containers:
@@ -200,10 +221,11 @@ saudáveis. O Flyway aplica migrations pendentes antes de o Hibernate validar o 
 
 ## Verificação pós-deploy
 
-Execute na própria VPS ou por uma rota protegida do balanceador:
+Execute na própria VPS, sem publicar a porta de gerenciamento:
 
 ```bash
-curl --fail http://127.0.0.1:8080/actuator/health
+docker compose -f docker-compose.prod.yml exec -T app \
+  wget --quiet --output-document=- http://localhost:9090/actuator/health
 ```
 
 Confirme também:
@@ -217,6 +239,8 @@ Confirme também:
 - logs contendo `correlationId`;
 - PostgreSQL, Redis, AMQP e RabbitMQ Management inacessíveis pela internet;
 - Swagger retornando 404/403 em produção, conforme esperado;
+- target `orderflow` com estado `UP` no Prometheus e cinco regras carregadas;
+- datasource Prometheus e dashboard `OrderFlow — Visão operacional` carregados no Grafana;
 - certificado, redirecionamento HTTPS e renovação automática funcionando.
 
 Use uma conta administrativa criada por procedimento operacional seguro. O profile `prod`

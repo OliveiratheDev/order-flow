@@ -234,10 +234,21 @@ Cada requisição recebe `X-Correlation-Id`. Valores seguros enviados pelo clien
 preservados; caso contrário, a API gera um UUID. O identificador aparece na resposta, no MDC,
 nos erros e na chamada ao gateway HTTP.
 
-O Actuator expõe `health`, `info`, `metrics`, estados/eventos de circuit breaker, retry e
-time limiter. Os endpoints além de `health` exigem JWT. No profile `prod`, o Spring Boot
-escreve logs estruturados em JSON no formato Logstash. Prometheus, Grafana e alertas ainda
-não fazem parte desta baseline.
+O Actuator expõe somente `health`, `info`, `metrics`, `prometheus` e `circuitbreakers`.
+Nos profiles Docker e produção, a porta de gerenciamento `9090` fica separada da API e
+acessível apenas pela rede interna. O profile `prod` escreve logs estruturados em JSON no
+formato Logstash.
+
+O Prometheus coleta a aplicação a cada 15 segundos e avalia regras para indisponibilidade,
+taxa de erro HTTP, latência p95, circuit breaker aberto e DLQ não vazia. O Grafana recebe por
+provisionamento a fonte Prometheus e o dashboard operacional. Métricas próprias observam
+eventos confirmados e adapters de infraestrutura; nenhuma instrumentação foi adicionada ao
+domínio ou aos services de pedido e pagamento.
+
+As tags são enumerações ou valores constantes: status do pedido, gateway, operação, motivo
+de falha e tipo de divergência. Identificadores, mensagens de exceção, URLs e dados de
+cliente nunca viram tags. A latência do gateway publica histogramas para cálculo de p50,
+p95 e p99; falhas usam contador separado por gateway e motivo.
 
 ## Profiles
 
@@ -317,6 +328,7 @@ A constraint única de `event_id` protege inclusive entregas concorrentes. Valor
 ## Decisões e limites
 
 As justificativas arquiteturais ficam em [`docs/adr`](adr/README.md). A baseline usa RabbitMQ
-como broker e mantém um gateway de pagamento simulado como padrão; refresh token, Prometheus e
-Grafana não fazem parte do escopo atual. Separar em microsserviços só será reconsiderado diante
-dos gatilhos observáveis registrados no ADR-001.
+como broker, mantém um gateway de pagamento simulado como padrão e entrega observabilidade
+local com Prometheus e Grafana. Refresh token e envio SMTP não fazem parte do escopo atual.
+Separar em microsserviços só será reconsiderado diante dos gatilhos observáveis registrados
+no ADR-001.

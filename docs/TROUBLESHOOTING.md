@@ -38,8 +38,8 @@ Verifique, nesta ordem:
 4. a migration mais recente foi aplicada sem erro;
 5. a porta do host está livre.
 
-O health check interno usa `/actuator/health` na porta `8080` do container, mesmo quando a
-porta do host é diferente.
+O health check interno usa `/actuator/health` na porta de gerenciamento `9090` do container,
+mesmo quando a porta pública da API é diferente.
 
 ## RabbitMQ não inicia ou a UI não abre
 
@@ -235,3 +235,35 @@ registrada sem repetir automaticamente o comando de negócio.
 A tabela `order_event_audit` é gravada em `BEFORE_COMMIT`. A ausência simultânea do pedido e
 da auditoria indica rollback esperado; pedido confirmado sem auditoria deve ser tratado como
 inconsistência operacional e investigado antes de alterar dados manualmente.
+
+## Prometheus não coleta a aplicação
+
+Confirme `docker compose ps app prometheus` e consulte `http://localhost:9090/targets` no
+ambiente local. O target esperado é `http://app:9090/actuator/prometheus`. Estado `DOWN` com
+erro de conexão normalmente indica aplicação ainda iniciando, health check inválido ou
+serviços em redes diferentes. Resposta 404 indica exposição incorreta do Actuator; resposta
+401 indica que `/actuator/prometheus` deixou de ser permitido na rede operacional.
+
+Valide também a configuração e as regras sem iniciar novos containers:
+
+```bash
+docker run --rm --entrypoint promtool \
+  -v "${PWD}/infra/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro" \
+  -v "${PWD}/infra/prometheus/alerts.yml:/etc/prometheus/rules/alerts.yml:ro" \
+  prom/prometheus:v3.13.1 check config /etc/prometheus/prometheus.yml
+```
+
+## Dashboard do Grafana está vazio
+
+Confirme primeiro se o target está `UP` no Prometheus. Depois verifique a fonte Prometheus no
+Grafana e selecione um intervalo que inclua tráfego recente. Contadores derivados por
+`rate()` precisam de ao menos duas coletas; execute o fluxo de demonstração, aguarde cerca de
+30 segundos e atualize o dashboard. Se o dashboard não existir, inspecione os logs do Grafana
+e os mounts de `infra/grafana/provisioning` e `infra/grafana/dashboards`.
+
+## Alerta de DLQ não encerra
+
+O alerta usa `orderflow_dlq_depth > 0` e só volta ao normal depois que a fila estiver vazia.
+Não purgue a DLQ apenas para silenciar o alerta. Siga o procedimento de diagnóstico,
+reprocessamento ou descarte registrado na seção da DLQ e aguarde uma nova coleta do
+Prometheus.

@@ -30,7 +30,8 @@ Ports & Adapters e testes com PostgreSQL e Redis reais via Testcontainers.
   divergências financeiras;
 - contrato de erros seguro baseado em RFC 9457;
 - Correlation ID propagado na resposta, nos logs e no gateway;
-- Actuator, OpenAPI/Swagger, logs JSON em produção e CI com cobertura mínima.
+- Actuator em porta operacional, métricas Prometheus, dashboard Grafana, alertas, logs JSON
+  em produção e CI com cobertura mínima.
 
 ## Stack
 
@@ -46,7 +47,7 @@ Ports & Adapters e testes com PostgreSQL e Redis reais via Testcontainers.
 | Agendamento | Spring Scheduling e ShedLock 7.7 com lock no PostgreSQL |
 | Mapeamento | MapStruct; Lombok usado de forma conservadora |
 | Qualidade | JUnit 5, Mockito, MockMvc, Testcontainers, JaCoCo |
-| Operação | Docker multi-stage, Docker Compose, Actuator, logs estruturados |
+| Operação | Docker multi-stage, Docker Compose, Actuator, Prometheus 3.13, Grafana 13.1, logs estruturados |
 
 ## Arquitetura
 
@@ -67,6 +68,8 @@ flowchart LR
         postgres[("Contêiner: PostgreSQL 16<br/>catálogo, usuários, pedidos e pagamentos")]
         redis[("Contêiner: Redis 7<br/>idempotência e cache")]
         rabbit[("Contêiner: RabbitMQ<br/>eventos, filas e DLQ")]
+        prometheus["Contêiner: Prometheus<br/>métricas e alertas"]
+        grafana["Contêiner: Grafana<br/>dashboard operacional"]
     end
 
     customer -->|"HTTPS / JSON + JWT"| api
@@ -74,6 +77,8 @@ flowchart LR
     api -->|"JDBC / transações"| postgres
     api -->|"RESP / TTL"| redis
     api -->|"AMQP / JSON"| rabbit
+    prometheus -->|"HTTP interno :9090<br/>/actuator/prometheus"| api
+    grafana -->|"PromQL"| prometheus
     api -.->|"HTTPS, perfil payment-asaas"| gateway
 ```
 
@@ -106,8 +111,8 @@ Leia a [visão técnica detalhada](docs/PROJECT_OVERVIEW.md) e o
 
 ## Início rápido com Docker
 
-Pré-requisitos: Docker Desktop com Compose e portas `8080`, `5433`, `6380`, `5672` e
-`15672` livres.
+Pré-requisitos: Docker Desktop com Compose e portas `8080`, `3000`, `5433`, `6380`, `5672`,
+`9090` e `15672` livres.
 Não é necessário instalar Maven: o build usa o Wrapper versionado no repositório.
 
 ```bash
@@ -115,8 +120,8 @@ docker compose up --build -d
 docker compose ps
 ```
 
-O Compose inicia a API, PostgreSQL, Redis e RabbitMQ, aguarda os health checks e executa as
-migrations Flyway automaticamente. Para acompanhar a aplicação:
+O Compose inicia API, PostgreSQL, Redis, RabbitMQ, Prometheus e Grafana, aguarda os health
+checks e executa as migrations Flyway automaticamente. Para acompanhar a aplicação:
 
 ```bash
 docker compose logs -f app
@@ -127,9 +132,10 @@ Serviços locais:
 | Serviço | Endereço |
 |---|---|
 | API | `http://localhost:8080` |
-| Health check | `http://localhost:8080/actuator/health` |
 | Swagger UI | `http://localhost:8080/swagger-ui.html` |
 | OpenAPI JSON | `http://localhost:8080/v3/api-docs` |
+| Prometheus | `http://localhost:9090` |
+| Grafana | `http://localhost:3000` |
 | PostgreSQL | `localhost:5433` |
 | Redis | `localhost:6380` |
 | RabbitMQ AMQP | `localhost:5672` |
@@ -137,6 +143,9 @@ Serviços locais:
 
 A UI usa `RABBITMQ_USER` e `RABBITMQ_PASSWORD` do `.env`. No ambiente local sem override,
 ambos são `orderflow`; não use esses defaults fora da máquina de desenvolvimento.
+O Grafana usa `GRAFANA_ADMIN_USER` e `GRAFANA_ADMIN_PASSWORD`; a senha de produção é
+obrigatória e deve ficar somente no gerenciador de segredos ou no `.env` não versionado.
+O Actuator da aplicação Docker escuta apenas na rede interna, na porta `9090`.
 
 Se `8080` já estiver ocupada, defina outra porta antes de subir o ambiente:
 
@@ -261,6 +270,36 @@ loop na fila de trabalho.
 - **Descarte:** remova uma mensagem apenas quando ela não for mais relevante, mantendo um
   registro operacional do `eventId`, motivo, responsável e data.
 
+## Observabilidade operacional
+
+O Actuator expõe somente `health`, `info`, `metrics`, `prometheus` e `circuitbreakers`.
+No Compose, a porta de gerenciamento `9090` da aplicação permanece interna; o Prometheus
+coleta `/actuator/prometheus` a cada 15 segundos e o Grafana já recebe a fonte de dados e o
+dashboard **OrderFlow — Visão operacional** por provisionamento versionado.
+
+| Métrica no código/Actuator | Série principal no Prometheus | Tags controladas |
+|---|---|---|
+| `orderflow.orders.created` | `orderflow_orders_total` | `status` |
+| `orderflow.payments.failed` | `orderflow_payments_failed_total` | `gateway`, `reason` |
+| `orderflow.payment.gateway.duration` | `orderflow_payment_gateway_duration_seconds_*` | `gateway`, `operation` |
+| `orderflow.reconciliation.divergences` | `orderflow_reconciliation_divergences_total` | `type` |
+| `orderflow.dlq.depth` | `orderflow_dlq_depth` | nenhuma |
+
+O dashboard está disponível em
+`http://localhost:3000/d/orderflow-overview/orderflow-visao-operacional` e contém:
+
+- requisições por segundo e taxa de erro HTTP;
+- latência HTTP p50, p95 e p99;
+- circuit breakers abertos;
+- pedidos criados por minuto;
+- profundidade da DLQ;
+- latência do gateway p50, p95 e p99.
+
+O Prometheus carrega cinco alertas versionados: aplicação indisponível, taxa de erro HTTP
+acima de 5%, latência p95 acima de dois segundos, circuit breaker aberto e DLQ não vazia.
+Para gerar dados, execute o fluxo de [`http/orderflow.http`](http/orderflow.http), aguarde ao
+menos um intervalo de coleta e selecione os últimos 15 minutos no dashboard.
+
 ## Testes e qualidade
 
 Com o Docker ativo, execute toda a verificação:
@@ -279,7 +318,7 @@ rollback, roteamento, auditoria, consumo idempotente, retry, DLQ e serializaçã
 fixas. O JaCoCo interrompe o build abaixo de 70% de cobertura de linhas. O relatório fica em
 `target/site/jacoco/index.html`.
 
-Última validação local da baseline em 09/08/2026: **155 testes aprovados** e **87,79% de
+Última validação local da baseline em 09/08/2026: **164 testes aprovados** e **88,06% de
 cobertura de linhas**.
 
 ## Configuração e produção
@@ -314,5 +353,4 @@ Pontos importantes:
 ## Limites conhecidos
 
 O envio de e-mail é deliberadamente simulado; SMTP/Mailhog não faz parte da entrega atual.
-Prometheus, Grafana, refresh token e um gateway de pagamento contratado também não fazem
-parte da baseline.
+Refresh token e um gateway de pagamento contratado também não fazem parte da baseline.
