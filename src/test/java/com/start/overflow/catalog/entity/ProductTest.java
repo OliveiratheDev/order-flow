@@ -13,7 +13,7 @@ class ProductTest {
     private final Category category = new Category("Eletrônicos", null);
 
     @Test
-    void normalizesSkuPriceAndStock() {
+    void deveNormalizarSkuPrecoEEstoque_quandoCriarProduto() {
         Product product = new Product(category, "Fone", " fone-01 ", null,
                 new BigDecimal("249.9"), 10);
 
@@ -23,7 +23,7 @@ class ProductTest {
     }
 
     @Test
-    void adjustsStockWithPositiveAndNegativeDelta() {
+    void deveAjustarEstoque_quandoDeltaForValido() {
         Product product = productWithStock(10);
 
         product.adjustStock(5);
@@ -33,7 +33,7 @@ class ProductTest {
     }
 
     @Test
-    void refusesNegativeStockAfterAdjustment() {
+    void deveRecusarAjuste_quandoEstoqueFicarNegativo() {
         Product product = productWithStock(2);
 
         assertThatThrownBy(() -> product.adjustStock(-3))
@@ -42,7 +42,7 @@ class ProductTest {
     }
 
     @Test
-    void reservesAndRestoresStock() {
+    void deveReservarERestaurar_quandoEstoqueForSuficiente() {
         Product product = productWithStock(5);
 
         product.reserveStock(3);
@@ -52,7 +52,7 @@ class ProductTest {
     }
 
     @Test
-    void rejectsZeroPrice() {
+    void deveRecusarProduto_quandoPrecoForZero() {
         assertThatThrownBy(() -> new Product(category, "Fone", "F-1", null,
                 BigDecimal.ZERO, 0)).isInstanceOf(ValidationException.class);
     }
