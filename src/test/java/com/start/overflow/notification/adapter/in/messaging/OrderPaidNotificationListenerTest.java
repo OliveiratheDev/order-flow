@@ -41,7 +41,7 @@ class OrderPaidNotificationListenerTest {
             return null;
         }).when(service).notifyPayment(any());
 
-        listener.handle(envelope);
+        listener.handle(envelope, "correlation-123");
 
         verify(service).notifyPayment(new PaymentNotificationCommand(
                 envelope.eventId(), "correlation-123", 42L, 7L,
@@ -54,7 +54,7 @@ class OrderPaidNotificationListenerTest {
         MDC.put(CorrelationIdContext.MDC_KEY, "previous-correlation");
         EventEnvelope<OrderPaidMessage> envelope = envelope(2, BigDecimal.TEN);
 
-        assertThatThrownBy(() -> listener.handle(envelope))
+        assertThatThrownBy(() -> listener.handle(envelope, "correlation-123"))
                 .isInstanceOf(AmqpRejectAndDontRequeueException.class)
                 .hasCauseInstanceOf(InvalidNotificationEventException.class);
 
@@ -67,7 +67,8 @@ class OrderPaidNotificationListenerTest {
         doThrow(new InvalidNotificationEventException("amount inválido"))
                 .when(service).notifyPayment(any());
 
-        assertThatThrownBy(() -> listener.handle(envelope(1, BigDecimal.TEN)))
+        assertThatThrownBy(() -> listener.handle(
+                envelope(1, BigDecimal.TEN), "correlation-123"))
                 .isInstanceOf(AmqpRejectAndDontRequeueException.class)
                 .hasCauseInstanceOf(InvalidNotificationEventException.class);
     }
@@ -77,8 +78,19 @@ class OrderPaidNotificationListenerTest {
         IllegalStateException transientFailure = new IllegalStateException("banco indisponível");
         doThrow(transientFailure).when(service).notifyPayment(any());
 
-        assertThatThrownBy(() -> listener.handle(envelope(1, BigDecimal.TEN)))
+        assertThatThrownBy(() -> listener.handle(
+                envelope(1, BigDecimal.TEN), "correlation-123"))
                 .isSameAs(transientFailure);
+    }
+
+    @Test
+    void rejectsDivergentCorrelationHeaderWithoutRetry() {
+        assertThatThrownBy(() -> listener.handle(
+                envelope(1, BigDecimal.TEN), "another-correlation"))
+                .isInstanceOf(AmqpRejectAndDontRequeueException.class)
+                .hasCauseInstanceOf(InvalidNotificationEventException.class);
+
+        verify(service, never()).notifyPayment(any());
     }
 
     private EventEnvelope<OrderPaidMessage> envelope(int version, BigDecimal amount) {
