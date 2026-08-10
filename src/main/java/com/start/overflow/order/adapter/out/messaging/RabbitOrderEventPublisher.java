@@ -135,7 +135,6 @@ public class RabbitOrderEventPublisher {
                 .addKeyValue("eventVersion", envelope.eventVersion())
                 .addKeyValue("routingKey", routingKey)
                 .addKeyValue("correlationId", envelope.correlationId())
-                .addKeyValue("eventEnvelope", envelope)
                 .log("Falha ao publicar evento de pedido; reprocessamento manual necessário");
     }
 

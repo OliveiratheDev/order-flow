@@ -28,6 +28,8 @@ orderflow:
 logging:
   level:
     com.start.overflow: INFO
+  pattern:
+    console: "%d{yyyy-MM-dd'T'HH:mm:ss.SSSXXX} %5p cid=%X{correlationId:-none} uid=%X{userId:-anonymous} [%thread] %logger{36} : %msg %kvp%n%wEx"
 
 management:
   health:

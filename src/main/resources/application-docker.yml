@@ -24,6 +24,10 @@ orderflow:
       email: ${BOOTSTRAP_ADMIN_EMAIL:admin@orderflow.local}
       password: ${BOOTSTRAP_ADMIN_PASSWORD}
 
+logging:
+  pattern:
+    console: "%d{yyyy-MM-dd'T'HH:mm:ss.SSSXXX} %5p cid=%X{correlationId:-none} uid=%X{userId:-anonymous} [%thread] %logger{36} : %msg %kvp%n%wEx"
+
 management:
   server:
     port: ${MANAGEMENT_PORT:9090}

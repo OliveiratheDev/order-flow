@@ -11,7 +11,9 @@ import org.slf4j.LoggerFactory;
 import org.slf4j.MDC;
 import org.springframework.amqp.AmqpRejectAndDontRequeueException;
 import org.springframework.amqp.rabbit.annotation.RabbitListener;
+import org.springframework.amqp.support.AmqpHeaders;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
+import org.springframework.messaging.handler.annotation.Header;
 import org.springframework.stereotype.Component;
 
 @Component
@@ -30,14 +32,18 @@ public class OrderPaidNotificationListener {
     @RabbitListener(
             id = "orderPaidNotificationListener",
             queues = RabbitTopology.NOTIFICATION_ORDER_PAID_QUEUE)
-    public void handle(EventEnvelope<OrderPaidMessage> envelope) {
+    public void handle(
+            EventEnvelope<OrderPaidMessage> envelope,
+            @Header(name = AmqpHeaders.CORRELATION_ID, required = false) String headerCorrelationId
+    ) {
         String previousCorrelationId = MDC.get(CorrelationIdContext.MDC_KEY);
         try {
             validateEnvelope(envelope);
-            MDC.put(CorrelationIdContext.MDC_KEY, envelope.correlationId());
+            String correlationId = resolveCorrelationId(envelope, headerCorrelationId);
+            MDC.put(CorrelationIdContext.MDC_KEY, correlationId);
             OrderPaidMessage payload = envelope.payload();
             notificationService.notifyPayment(new PaymentNotificationCommand(
-                    envelope.eventId(), envelope.correlationId(), payload.orderId(),
+                    envelope.eventId(), correlationId, payload.orderId(),
                     payload.customerId(), payload.total()));
         } catch (InvalidNotificationEventException exception) {
             log.atWarn()
@@ -66,6 +72,20 @@ public class OrderPaidNotificationListener {
         if (envelope.payload() == null) {
             throw new InvalidNotificationEventException("payload é obrigatório");
         }
+    }
+
+    private String resolveCorrelationId(
+            EventEnvelope<OrderPaidMessage> envelope,
+            String headerCorrelationId
+    ) {
+        if (headerCorrelationId == null || headerCorrelationId.isBlank()) {
+            return envelope.correlationId();
+        }
+        String normalizedHeader = headerCorrelationId.strip();
+        if (!normalizedHeader.equals(envelope.correlationId())) {
+            throw new InvalidNotificationEventException("correlationId divergente");
+        }
+        return normalizedHeader;
     }
 
     private void restoreCorrelationId(String previousCorrelationId) {

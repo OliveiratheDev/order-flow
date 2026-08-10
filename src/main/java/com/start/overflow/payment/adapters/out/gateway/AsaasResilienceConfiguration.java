@@ -1,5 +1,6 @@
 package com.start.overflow.payment.adapters.out.gateway;
 
+import com.start.overflow.shared.observability.MdcPropagatingExecutorService;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -18,13 +19,13 @@ class AsaasResilienceConfiguration {
 
     @Bean(name = EXECUTOR, destroyMethod = "shutdown", defaultCandidate = false)
     ExecutorService asaasPaymentExecutor() {
-        return new ThreadPoolExecutor(
+        return new MdcPropagatingExecutorService(new ThreadPoolExecutor(
                 4,
                 8,
                 30,
                 TimeUnit.SECONDS,
                 new ArrayBlockingQueue<>(50),
                 Thread.ofPlatform().name("asaas-payment-", 0).factory(),
-                new ThreadPoolExecutor.AbortPolicy());
+                new ThreadPoolExecutor.AbortPolicy()));
     }
 }
