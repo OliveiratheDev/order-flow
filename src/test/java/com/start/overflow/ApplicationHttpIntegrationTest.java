@@ -1,6 +1,7 @@
 package com.start.overflow;
 
 import com.start.overflow.identity.service.UserService;
+import io.micrometer.core.instrument.MeterRegistry;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -22,8 +23,11 @@ import org.testcontainers.utility.DockerImageName;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.ObjectMapper;
 
+import java.time.Duration;
 import java.util.Set;
 
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.hamcrest.Matchers.containsString;
 import static org.hamcrest.Matchers.endsWith;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
@@ -31,6 +35,7 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -65,6 +70,7 @@ class ApplicationHttpIntegrationTest {
     @Autowired JdbcTemplate jdbc;
     @Autowired StringRedisTemplate redis;
     @Autowired UserService userService;
+    @Autowired MeterRegistry meterRegistry;
 
     @BeforeEach
     void resetState() {
@@ -171,6 +177,10 @@ class ApplicationHttpIntegrationTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.totalElements").value(1));
 
+        long gatewayCalls = meterRegistry.get("orderflow.payment.gateway.duration")
+                .tags("gateway", "simulated", "operation", "create")
+                .timer()
+                .count();
         long paymentId = id(mockMvc.perform(withToken(postJson("/api/v1/payments", """
                         {"orderId":%d,"method":"PIX"}
                         """.formatted(orderId)), customerToken)
@@ -179,6 +189,10 @@ class ApplicationHttpIntegrationTest {
                 .andExpect(header().string("X-Correlation-Id", "complete-flow-correlation"))
                 .andExpect(jsonPath("$.status").value("APPROVED"))
                 .andReturn());
+        assertThat(meterRegistry.get("orderflow.payment.gateway.duration")
+                .tags("gateway", "simulated", "operation", "create")
+                .timer()
+                .count()).isEqualTo(gatewayCalls + 1);
 
         mockMvc.perform(withToken(get("/api/v1/payments/{id}", paymentId), customerToken))
                 .andExpect(status().isOk())
@@ -205,6 +219,61 @@ class ApplicationHttpIntegrationTest {
                 .andExpect(status().isNoContent());
         mockMvc.perform(withToken(delete("/api/v1/categories/{id}", categoryId), adminToken))
                 .andExpect(status().isNoContent());
+    }
+
+    @Test
+    void actuatorExposesOnlyOperationalEndpoints() throws Exception {
+        String adminToken = token(login(ADMIN_EMAIL, ADMIN_PASSWORD));
+        meterRegistry.get("orderflow.orders.created")
+                .tag("status", "created")
+                .counter()
+                .increment();
+        meterRegistry.get("orderflow.payments.failed")
+                .tags("gateway", "asaas", "reason", "rejected")
+                .counter()
+                .increment();
+        meterRegistry.get("orderflow.payment.gateway.duration")
+                .tags("gateway", "asaas", "operation", "create")
+                .timer()
+                .record(Duration.ofMillis(50));
+        meterRegistry.get("orderflow.reconciliation.divergences")
+                .tag("type", "charge_data")
+                .counter()
+                .increment();
+
+        mockMvc.perform(get("/actuator/health"))
+                .andExpect(status().isOk());
+        mockMvc.perform(get("/actuator/prometheus"))
+                .andExpect(status().isOk())
+                .andExpect(content().string(containsString("orderflow_orders_total")))
+                .andExpect(content().string(containsString("orderflow_payments_failed_total")))
+                .andExpect(content().string(containsString(
+                        "orderflow_payment_gateway_duration_seconds")))
+                .andExpect(content().string(containsString(
+                        "orderflow_reconciliation_divergences_total")))
+                .andExpect(content().string(containsString("orderflow_dlq_depth")));
+        mockMvc.perform(get("/actuator/metrics/orderflow.orders.created")
+                        .header("Authorization", bearer(adminToken)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.name").value("orderflow.orders.created"));
+        mockMvc.perform(get("/actuator/info")
+                        .header("Authorization", bearer(adminToken)))
+                .andExpect(status().isOk());
+        mockMvc.perform(get("/actuator/metrics")
+                        .header("Authorization", bearer(adminToken)))
+                .andExpect(status().isOk());
+        mockMvc.perform(get("/actuator/circuitbreakers")
+                        .header("Authorization", bearer(adminToken)))
+                .andExpect(status().isOk());
+        mockMvc.perform(get("/actuator/env")
+                        .header("Authorization", bearer(adminToken)))
+                .andExpect(status().isNotFound());
+        mockMvc.perform(get("/actuator/heapdump")
+                        .header("Authorization", bearer(adminToken)))
+                .andExpect(status().isNotFound());
+        mockMvc.perform(get("/actuator/beans")
+                        .header("Authorization", bearer(adminToken)))
+                .andExpect(status().isNotFound());
     }
 
     @Test

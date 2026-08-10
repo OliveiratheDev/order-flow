@@ -123,7 +123,9 @@ class PaymentReconciliationServiceTest {
 
         service.reconcilePendingPayments();
 
-        assertThat(metric("divergences")).isEqualTo(1);
+        assertThat(meterRegistry.counter(
+                "orderflow.reconciliation.divergences", "type", "charge_data").count())
+                .isEqualTo(1);
         assertThat(metric("corrections")).isZero();
     }
 
