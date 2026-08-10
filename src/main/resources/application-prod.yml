@@ -36,6 +36,8 @@ logging:
       console: logstash
 
 management:
+  server:
+    port: ${MANAGEMENT_PORT:9090}
   health:
     rabbit:
       enabled: true

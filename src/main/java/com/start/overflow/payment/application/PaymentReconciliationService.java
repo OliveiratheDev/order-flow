@@ -65,7 +65,9 @@ public class PaymentReconciliationService {
         this.executions = meterRegistry.counter(METRIC_PREFIX + "executions");
         this.checked = meterRegistry.counter(METRIC_PREFIX + "checked");
         this.corrections = meterRegistry.counter(METRIC_PREFIX + "corrections");
-        this.divergences = meterRegistry.counter(METRIC_PREFIX + "divergences");
+        this.divergences = Counter.builder("orderflow.reconciliation.divergences")
+                .tag("type", "charge_data")
+                .register(meterRegistry);
         this.notFound = meterRegistry.counter(METRIC_PREFIX + "not_found");
         this.errors = meterRegistry.counter(METRIC_PREFIX + "errors");
         this.duration = meterRegistry.timer(METRIC_PREFIX + "duration");

@@ -10,6 +10,8 @@ import com.start.overflow.payment.domain.PaymentGatewayUnavailableException;
 import com.start.overflow.payment.domain.PaymentRejectedException;
 import com.start.overflow.payment.ports.out.PaymentGatewayPort;
 import com.start.overflow.shared.observability.CorrelationIdContext;
+import com.start.overflow.shared.observability.ObservedPaymentGateway;
+import com.start.overflow.shared.observability.PaymentGatewayName;
 import io.github.resilience4j.circuitbreaker.CallNotPermittedException;
 import io.github.resilience4j.circuitbreaker.CircuitBreaker;
 import io.github.resilience4j.circuitbreaker.CircuitBreakerRegistry;
@@ -46,6 +48,7 @@ import java.util.function.Supplier;
 
 @Component
 @Profile("payment-asaas & !payment-http & !payment-declined")
+@ObservedPaymentGateway(PaymentGatewayName.ASAAS)
 public class AsaasPaymentGatewayAdapter implements PaymentGatewayPort {
     private static final Logger log = LoggerFactory.getLogger(AsaasPaymentGatewayAdapter.class);
     private static final String ACCESS_TOKEN_HEADER = "access_token";

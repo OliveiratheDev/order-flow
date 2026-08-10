@@ -6,6 +6,8 @@ import com.start.overflow.payment.domain.GatewayChargeStatus;
 import com.start.overflow.payment.domain.PaymentGatewayUnavailableException;
 import com.start.overflow.payment.domain.PaymentRejectedException;
 import com.start.overflow.payment.ports.out.PaymentGatewayPort;
+import com.start.overflow.shared.observability.ObservedPaymentGateway;
+import com.start.overflow.shared.observability.PaymentGatewayName;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Profile;
 import org.springframework.http.HttpHeaders;
@@ -18,6 +20,7 @@ import java.math.BigDecimal;
 
 @Component
 @Profile("payment-http & !payment-declined & !payment-asaas")
+@ObservedPaymentGateway(PaymentGatewayName.HTTP)
 public class HttpPaymentGatewayAdapter implements PaymentGatewayPort {
     private final RestClient restClient;
 

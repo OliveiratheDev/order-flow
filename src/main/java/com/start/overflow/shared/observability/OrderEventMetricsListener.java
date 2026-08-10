@@ -18,12 +18,14 @@ public class OrderEventMetricsListener {
     private static final Logger log = LoggerFactory.getLogger(OrderEventMetricsListener.class);
     private static final String EVENTS_METRIC = "orderflow.order.events";
     private static final String FAILURES_METRIC = "orderflow.order.event_listener.failures";
+    private static final String ORDERS_CREATED_METRIC = "orderflow.orders.created";
     private static final String[] EVENT_TYPES = {
             "OrderCreated", "OrderPaid", "OrderCancelled"
     };
 
     private final Map<String, Counter> eventCounters;
     private final Counter failureCounter;
+    private final Counter ordersCreatedCounter;
 
     @Autowired
     public OrderEventMetricsListener(MeterRegistry meterRegistry) {
@@ -35,11 +37,19 @@ public class OrderEventMetricsListener {
         }
         this.eventCounters = Map.copyOf(counters);
         this.failureCounter = meterRegistry.counter(FAILURES_METRIC);
+        this.ordersCreatedCounter = Counter.builder(ORDERS_CREATED_METRIC)
+                .tag("status", "created")
+                .register(meterRegistry);
     }
 
-    OrderEventMetricsListener(Map<String, Counter> eventCounters, Counter failureCounter) {
+    OrderEventMetricsListener(
+            Map<String, Counter> eventCounters,
+            Counter failureCounter,
+            Counter ordersCreatedCounter
+    ) {
         this.eventCounters = Map.copyOf(eventCounters);
         this.failureCounter = failureCounter;
+        this.ordersCreatedCounter = ordersCreatedCounter;
     }
 
     @TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT)
@@ -51,6 +61,9 @@ public class OrderEventMetricsListener {
                         "Tipo de evento de pedido não registrado: " + event.eventType());
             }
             counter.increment();
+            if ("OrderCreated".equals(event.eventType())) {
+                ordersCreatedCounter.increment();
+            }
             log.atInfo()
                     .addKeyValue("eventId", event.eventId())
                     .addKeyValue("eventType", event.eventType())
