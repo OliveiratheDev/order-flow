@@ -1,6 +1,7 @@
 package com.start.overflow.catalog.mapper;
 
 import com.start.overflow.catalog.dto.CategoryResponse;
+import com.start.overflow.catalog.dto.CategorySummaryResponse;
 import com.start.overflow.catalog.entity.Category;
 import org.mapstruct.Mapper;
 
@@ -8,4 +9,6 @@ import org.mapstruct.Mapper;
 public interface CategoryMapper {
 
     CategoryResponse toResponse(Category category);
+
+    CategorySummaryResponse toSummary(Category category);
 }

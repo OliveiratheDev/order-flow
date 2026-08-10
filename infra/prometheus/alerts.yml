@@ -1,0 +1,38 @@
+groups:
+  - name: orderflow
+    rules:
+      - alert: OrderFlowUnavailable
+        expr: up{job="orderflow"} == 0
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: OrderFlow indisponível para coleta de métricas
+      - alert: OrderFlowHighErrorRate
+        expr: sum(rate(http_server_requests_seconds_count{job="orderflow",status=~"5.."}[5m])) / clamp_min(sum(rate(http_server_requests_seconds_count{job="orderflow"}[5m])), 0.001) > 0.05
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: Taxa de erro HTTP acima de 5%
+      - alert: OrderFlowHighLatency
+        expr: histogram_quantile(0.95, sum by (le) (rate(http_server_requests_seconds_bucket{job="orderflow"}[5m]))) > 2
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: Latência HTTP p95 acima de dois segundos
+      - alert: OrderFlowCircuitBreakerOpen
+        expr: max(resilience4j_circuitbreaker_state{job="orderflow",state="open"}) > 0
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: Circuit breaker de pagamento aberto
+      - alert: OrderFlowDeadLetterQueueNotEmpty
+        expr: orderflow_dlq_depth{job="orderflow"} > 0
+        for: 1m
+        labels:
+          severity: warning
+        annotations:
+          summary: Mensagens aguardando tratamento na DLQ

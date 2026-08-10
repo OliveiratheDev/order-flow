@@ -1,7 +1,8 @@
 package com.start.overflow.catalog.dto;
 
 
-import java.time.LocalDateTime;
+import java.io.Serializable;
+import java.time.Instant;
 
 public record CategoryResponse(
         Long id,
@@ -9,7 +10,7 @@ public record CategoryResponse(
         String slug,
         String description,
         Boolean active,
-        LocalDateTime createdAt
-) {
-
+        Instant createdAt,
+        Instant updatedAt
+) implements Serializable {
 }

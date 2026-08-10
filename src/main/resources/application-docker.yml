@@ -1,0 +1,36 @@
+spring:
+  datasource:
+    url: ${DB_URL:jdbc:postgresql://postgres:5432/orderflow}
+    username: ${DB_USER:orderflow}
+    password: ${DB_PASSWORD:orderflow}
+  data:
+    redis:
+      host: ${REDIS_HOST:redis}
+      port: ${REDIS_PORT:6379}
+  rabbitmq:
+    host: ${RABBITMQ_HOST:rabbitmq}
+    port: ${RABBITMQ_PORT:5672}
+    username: ${RABBITMQ_USER:orderflow}
+    password: ${RABBITMQ_PASSWORD:orderflow}
+
+orderflow:
+  messaging:
+    rabbit:
+      enabled: ${RABBITMQ_ENABLED:true}
+  bootstrap:
+    admin:
+      enabled: ${BOOTSTRAP_ADMIN_ENABLED:true}
+      name: ${BOOTSTRAP_ADMIN_NAME:Local Administrator}
+      email: ${BOOTSTRAP_ADMIN_EMAIL:admin@orderflow.local}
+      password: ${BOOTSTRAP_ADMIN_PASSWORD}
+
+logging:
+  pattern:
+    console: "%d{yyyy-MM-dd'T'HH:mm:ss.SSSXXX} %5p cid=%X{correlationId:-none} uid=%X{userId:-anonymous} [%thread] %logger{36} : %msg %kvp%n%wEx"
+
+management:
+  server:
+    port: ${MANAGEMENT_PORT:9090}
+  health:
+    rabbit:
+      enabled: ${RABBITMQ_ENABLED:true}

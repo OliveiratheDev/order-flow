@@ -1,0 +1,213 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: ${DB_NAME:?DB_NAME é obrigatório}
+      POSTGRES_USER: ${DB_USER:?DB_USER é obrigatório}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:?DB_PASSWORD é obrigatório}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    deploy:
+      resources:
+        limits:
+          cpus: "1.0"
+          memory: 768M
+    restart: unless-stopped
+
+  redis:
+    image: redis:7-alpine
+    command: ["redis-server", "--appendonly", "yes", "--requirepass", "${REDIS_PASSWORD:?REDIS_PASSWORD é obrigatório}"]
+    environment:
+      REDISCLI_AUTH: ${REDIS_PASSWORD:?REDIS_PASSWORD é obrigatório}
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    deploy:
+      resources:
+        limits:
+          cpus: "0.5"
+          memory: 256M
+    restart: unless-stopped
+
+  rabbitmq:
+    image: rabbitmq:3-management-alpine
+    environment:
+      RABBITMQ_DEFAULT_USER: ${RABBITMQ_USER:?RABBITMQ_USER é obrigatório}
+      RABBITMQ_DEFAULT_PASS: ${RABBITMQ_PASSWORD:?RABBITMQ_PASSWORD é obrigatório}
+    volumes:
+      - rabbitmq_data:/var/lib/rabbitmq
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "-q", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    deploy:
+      resources:
+        limits:
+          cpus: "1.0"
+          memory: 512M
+    restart: unless-stopped
+
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    environment:
+      SPRING_PROFILES_ACTIVE: ${SPRING_PROFILES_ACTIVE:-prod}
+      DB_URL: jdbc:postgresql://postgres:5432/${DB_NAME:?DB_NAME é obrigatório}
+      DB_USER: ${DB_USER:?DB_USER é obrigatório}
+      DB_PASSWORD: ${DB_PASSWORD:?DB_PASSWORD é obrigatório}
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      REDIS_PASSWORD: ${REDIS_PASSWORD:?REDIS_PASSWORD é obrigatório}
+      REDIS_SSL: "false"
+      RABBITMQ_ENABLED: "true"
+      RABBITMQ_HOST: rabbitmq
+      RABBITMQ_PORT: 5672
+      RABBITMQ_USER: ${RABBITMQ_USER:?RABBITMQ_USER é obrigatório}
+      RABBITMQ_PASSWORD: ${RABBITMQ_PASSWORD:?RABBITMQ_PASSWORD é obrigatório}
+      RABBITMQ_PUBLISHER_CONFIRM_TIMEOUT: ${RABBITMQ_PUBLISHER_CONFIRM_TIMEOUT:-5s}
+      RABBITMQ_CONSUMER_MAX_RETRIES: ${RABBITMQ_CONSUMER_MAX_RETRIES:-2}
+      RABBITMQ_CONSUMER_RETRY_INITIAL_INTERVAL: ${RABBITMQ_CONSUMER_RETRY_INITIAL_INTERVAL:-1s}
+      RABBITMQ_CONSUMER_RETRY_MULTIPLIER: ${RABBITMQ_CONSUMER_RETRY_MULTIPLIER:-2}
+      RABBITMQ_CONSUMER_RETRY_MAX_INTERVAL: ${RABBITMQ_CONSUMER_RETRY_MAX_INTERVAL:-2s}
+      RABBITMQ_CONSUMER_CONCURRENCY: ${RABBITMQ_CONSUMER_CONCURRENCY:-2}
+      RABBITMQ_CONSUMER_MAX_CONCURRENCY: ${RABBITMQ_CONSUMER_MAX_CONCURRENCY:-5}
+      RABBITMQ_CONSUMER_PREFETCH: ${RABBITMQ_CONSUMER_PREFETCH:-10}
+      NOTIFICATION_PROCESSED_EVENT_RETENTION: ${NOTIFICATION_PROCESSED_EVENT_RETENTION:-30d}
+      NOTIFICATION_CLEANUP_CRON: ${NOTIFICATION_CLEANUP_CRON:-0 0 3 * * *}
+      JWT_SECRET: ${JWT_SECRET:?JWT_SECRET é obrigatório}
+      PAYMENT_GATEWAY_BASE_URL: ${PAYMENT_GATEWAY_BASE_URL:-}
+      PAYMENT_GATEWAY_API_KEY: ${PAYMENT_GATEWAY_API_KEY:-}
+      ASAAS_BASE_URL: ${ASAAS_BASE_URL:-https://api.asaas.com/v3}
+      ASAAS_API_KEY: ${ASAAS_API_KEY:-}
+      ASAAS_USER_AGENT: ${ASAAS_USER_AGENT:-OrderFlow/1.0}
+      ASAAS_PAYMENT_DUE_DAYS: ${ASAAS_PAYMENT_DUE_DAYS:-3}
+      ASAAS_CONNECT_TIMEOUT: ${ASAAS_CONNECT_TIMEOUT:-3s}
+      ASAAS_READ_TIMEOUT: ${ASAAS_READ_TIMEOUT:-3s}
+      ASAAS_WEBHOOK_TOKEN: ${ASAAS_WEBHOOK_TOKEN:-}
+      PAYMENT_RECONCILIATION_CRON: ${PAYMENT_RECONCILIATION_CRON:-0 */15 * * * *}
+      PAYMENT_RECONCILIATION_MIN_AGE: ${PAYMENT_RECONCILIATION_MIN_AGE:-10m}
+      PAYMENT_RECONCILIATION_MAX_AGE: ${PAYMENT_RECONCILIATION_MAX_AGE:-7d}
+      PAYMENT_RECONCILIATION_BATCH_SIZE: ${PAYMENT_RECONCILIATION_BATCH_SIZE:-200}
+      PAYMENT_RECONCILIATION_LOCK_AT_MOST: ${PAYMENT_RECONCILIATION_LOCK_AT_MOST:-15m}
+      PAYMENT_RECONCILIATION_LOCK_AT_LEAST: ${PAYMENT_RECONCILIATION_LOCK_AT_LEAST:-1m}
+      MANAGEMENT_PORT: 9090
+    expose:
+      - "8080"
+      - "9090"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--output-document=/dev/null", "http://localhost:9090/actuator/health"]
+      interval: 15s
+      timeout: 5s
+      start_period: 60s
+      retries: 6
+    deploy:
+      resources:
+        limits:
+          cpus: "1.5"
+          memory: 768M
+    restart: unless-stopped
+
+  prometheus:
+    image: prom/prometheus:v3.13.1
+    command:
+      - "--config.file=/etc/prometheus/prometheus.yml"
+      - "--storage.tsdb.path=/prometheus"
+    expose:
+      - "9090"
+    volumes:
+      - ./infra/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ./infra/prometheus/alerts.yml:/etc/prometheus/rules/alerts.yml:ro
+      - prometheus_data:/prometheus
+    depends_on:
+      app:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "--quiet", "http://localhost:9090/-/healthy"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    deploy:
+      resources:
+        limits:
+          cpus: "1.0"
+          memory: 512M
+    restart: unless-stopped
+
+  grafana:
+    image: grafana/grafana:13.1.1
+    environment:
+      GF_SECURITY_ADMIN_USER: ${GRAFANA_ADMIN_USER:?GRAFANA_ADMIN_USER é obrigatório}
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD:?GRAFANA_ADMIN_PASSWORD é obrigatório}
+      GF_USERS_ALLOW_SIGN_UP: "false"
+    expose:
+      - "3000"
+    volumes:
+      - ./infra/grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./infra/grafana/dashboards:/var/lib/grafana/dashboards:ro
+      - grafana_data:/var/lib/grafana
+    depends_on:
+      prometheus:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "--quiet", "http://localhost:3000/api/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    deploy:
+      resources:
+        limits:
+          cpus: "0.5"
+          memory: 384M
+    restart: unless-stopped
+
+  caddy:
+    image: caddy:2.11.4-alpine
+    environment:
+      ORDERFLOW_DOMAIN: ${ORDERFLOW_DOMAIN:?ORDERFLOW_DOMAIN é obrigatório}
+      GRAFANA_DOMAIN: ${GRAFANA_DOMAIN:?GRAFANA_DOMAIN é obrigatório}
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"
+    volumes:
+      - ./infra/caddy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on:
+      app:
+        condition: service_healthy
+      grafana:
+        condition: service_healthy
+    deploy:
+      resources:
+        limits:
+          cpus: "0.5"
+          memory: 128M
+    restart: unless-stopped
+
+volumes:
+  postgres_data:
+  redis_data:
+  rabbitmq_data:
+  prometheus_data:
+  grafana_data:
+  caddy_data:
+  caddy_config:

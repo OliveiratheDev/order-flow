@@ -1,0 +1,185 @@
+### OrderFlow — fluxo completo de demonstração
+### Compatível com o HTTP Client do IntelliJ IDEA.
+### Altere a porta se APP_PORT estiver diferente de 8080.
+
+@baseUrl = http://localhost:8080/api/v1
+@adminEmail = admin@orderflow.local
+@adminPassword = LocalAdmin123!
+@idempotencyKey = demo-order-001
+@asaasWebhookToken = substitua-pelo-token-do-seu-env
+
+### 1. Health check
+GET http://localhost:8080/actuator/health
+X-Correlation-Id: demo-health
+
+### 2. Registrar um cliente novo e guardar o JWT
+POST {{baseUrl}}/auth/register
+Content-Type: application/json
+X-Correlation-Id: demo-register
+
+{
+  "name": "Cliente Demonstração",
+  "email": "cliente-{{$timestamp}}@example.com",
+  "document": "52998224725",
+  "password": "Customer123!"
+}
+
+> {%
+    client.global.set("customerToken", response.body.accessToken);
+%}
+
+### 3. Autenticar o administrador local e guardar o JWT
+POST {{baseUrl}}/auth/login
+Content-Type: application/json
+X-Correlation-Id: demo-admin-login
+
+{
+  "email": "{{adminEmail}}",
+  "password": "{{adminPassword}}"
+}
+
+> {%
+    client.global.set("adminToken", response.body.accessToken);
+%}
+
+### 4. Consultar o usuário autenticado
+GET {{baseUrl}}/auth/me
+Authorization: Bearer {{customerToken}}
+X-Correlation-Id: demo-current-user
+
+### 5. Criar categoria como administrador
+POST {{baseUrl}}/categories
+Authorization: Bearer {{adminToken}}
+Content-Type: application/json
+X-Correlation-Id: demo-create-category
+
+{
+  "name": "Categoria Demo {{$timestamp}}",
+  "description": "Categoria criada pelo fluxo de demonstração"
+}
+
+> {%
+    client.global.set("categoryId", response.body.id);
+%}
+
+### 6. Criar produto com estoque
+POST {{baseUrl}}/products
+Authorization: Bearer {{adminToken}}
+Content-Type: application/json
+X-Correlation-Id: demo-create-product
+
+{
+  "categoryId": {{categoryId}},
+  "name": "Teclado de demonstração",
+  "sku": "DEMO-{{$timestamp}}",
+  "description": "Produto usado no fluxo completo",
+  "price": 149.90,
+  "stock": 10
+}
+
+> {%
+    client.global.set("productId", response.body.id);
+%}
+
+### 7. Buscar produtos pelo filtro de categoria
+GET {{baseUrl}}/products?categoryId={{categoryId}}&size=20
+X-Correlation-Id: demo-search-product
+
+### 8. Criar pedido — primeira tentativa retorna 201
+### Troque @idempotencyKey antes de iniciar outro pedido com payload diferente.
+POST {{baseUrl}}/orders
+Authorization: Bearer {{customerToken}}
+Idempotency-Key: {{idempotencyKey}}
+Content-Type: application/json
+X-Correlation-Id: demo-create-order
+
+{
+  "shippingAddress": "Rua da Demonstração, 100",
+  "items": [
+    {
+      "productId": {{productId}},
+      "quantity": 2
+    }
+  ]
+}
+
+> {%
+    client.global.set("orderId", response.body.id);
+    client.global.set("orderTotal", response.body.total);
+%}
+
+### 9. Repetir exatamente o pedido — retorna 200 e o mesmo corpo
+POST {{baseUrl}}/orders
+Authorization: Bearer {{customerToken}}
+Idempotency-Key: {{idempotencyKey}}
+Content-Type: application/json
+X-Correlation-Id: demo-replay-order
+
+{
+  "shippingAddress": "Rua da Demonstração, 100",
+  "items": [
+    {
+      "productId": {{productId}},
+      "quantity": 2
+    }
+  ]
+}
+
+### 10. Criar e processar pagamento PIX
+POST {{baseUrl}}/payments
+Authorization: Bearer {{customerToken}}
+Content-Type: application/json
+X-Correlation-Id: demo-create-payment
+
+{
+  "orderId": {{orderId}},
+  "method": "PIX"
+}
+
+> {%
+    client.global.set("paymentId", response.body.id);
+    client.global.set("paymentUrl", response.body.paymentUrl);
+    client.global.set("paymentExternalId", response.body.externalId);
+%}
+
+### 11. Consultar pagamento
+GET {{baseUrl}}/payments/{{paymentId}}
+Authorization: Bearer {{customerToken}}
+X-Correlation-Id: demo-get-payment
+
+### 11.1 Confirmar pagamento pelo webhook (somente com profile payment-asaas)
+POST {{baseUrl}}/webhooks/asaas
+Content-Type: application/json
+asaas-access-token: {{asaasWebhookToken}}
+X-Correlation-Id: demo-asaas-webhook
+
+{
+  "id": "evt_demo_payment_received_001",
+  "event": "PAYMENT_RECEIVED",
+  "dateCreated": "2026-08-09 18:00:00",
+  "payment": {
+    "object": "payment",
+    "id": "{{paymentExternalId}}",
+    "value": {{orderTotal}},
+    "externalReference": "orderflow-order-{{orderId}}"
+  }
+}
+
+### 12. Enviar pedido como administrador
+PATCH {{baseUrl}}/orders/{{orderId}}/ship
+Authorization: Bearer {{adminToken}}
+X-Correlation-Id: demo-ship-order
+
+### 13. Entregar pedido como administrador
+PATCH {{baseUrl}}/orders/{{orderId}}/deliver
+Authorization: Bearer {{adminToken}}
+X-Correlation-Id: demo-deliver-order
+
+### 14. Consultar pedido entregue
+GET {{baseUrl}}/orders/{{orderId}}
+Authorization: Bearer {{customerToken}}
+X-Correlation-Id: demo-final-order
+
+### 15. Confirmar que o estoque caiu de 10 para 8
+GET {{baseUrl}}/products/{{productId}}
+X-Correlation-Id: demo-final-stock

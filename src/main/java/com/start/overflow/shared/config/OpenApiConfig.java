@@ -1,8 +1,10 @@
 package com.start.overflow.shared.config;
 
 import io.swagger.v3.oas.models.OpenAPI;
+import io.swagger.v3.oas.models.Components;
 import io.swagger.v3.oas.models.info.Contact;
 import io.swagger.v3.oas.models.info.Info;
+import io.swagger.v3.oas.models.security.SecurityScheme;
 import io.swagger.v3.oas.models.servers.Server;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -21,9 +23,18 @@ public class OpenApiConfig {
                         .description("Plataforma de pedidos e cobrança")
                         .contact(new Contact()
                                 .name("Gabriel")
-                                .email("seu-email@exemplo.com")))
+                                .url("https://github.com/OliveiratheDev/order-flow")))
+                .components(new Components()
+                        .addSecuritySchemes("bearerAuth", new SecurityScheme()
+                                .type(SecurityScheme.Type.HTTP)
+                                .scheme("bearer")
+                                .bearerFormat("JWT"))
+                        .addSecuritySchemes("asaasWebhookToken", new SecurityScheme()
+                                .type(SecurityScheme.Type.APIKEY)
+                                .in(SecurityScheme.In.HEADER)
+                                .name("asaas-access-token")))
                 .servers(List.of(
-                        new Server().url("http://localhost:8080").description("Ambiente local")
+                        new Server().url("/").description("Servidor atual")
                 ));
     }
 }

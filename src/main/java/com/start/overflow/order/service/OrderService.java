@@ -1,0 +1,153 @@
+package com.start.overflow.order.service;
+
+import com.start.overflow.identity.entity.AppUser;
+import com.start.overflow.identity.entity.UserRole;
+import com.start.overflow.identity.service.UserService;
+import com.start.overflow.order.dto.CreateOrderItemRequest;
+import com.start.overflow.order.dto.CreateOrderRequest;
+import com.start.overflow.order.dto.OrderResponse;
+import com.start.overflow.order.entity.CustomerOrder;
+import com.start.overflow.order.entity.OrderItem;
+import com.start.overflow.order.mapper.OrderMapper;
+import com.start.overflow.order.port.out.OrderCatalogPort;
+import com.start.overflow.order.repository.OrderRepository;
+import com.start.overflow.shared.dto.PageResponse;
+import com.start.overflow.shared.exception.ResourceNotFoundException;
+import com.start.overflow.shared.exception.ValidationException;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Pageable;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
+
+@Service
+public class OrderService {
+    private static final Logger log = LoggerFactory.getLogger(OrderService.class);
+    private final OrderRepository orderRepository;
+    private final OrderCatalogPort orderCatalogPort;
+    private final UserService userService;
+    private final OrderMapper orderMapper;
+
+    public OrderService(OrderRepository orderRepository, OrderCatalogPort orderCatalogPort,
+                        UserService userService, OrderMapper orderMapper) {
+        this.orderRepository = orderRepository;
+        this.orderCatalogPort = orderCatalogPort;
+        this.userService = userService;
+        this.orderMapper = orderMapper;
+    }
+
+    @Transactional
+    public OrderResponse create(CreateOrderRequest request) {
+        AppUser customer = userService.currentUserEntity();
+        Map<Long, Integer> quantities = aggregateItems(request.items());
+        CustomerOrder.Builder builder = CustomerOrder.builder()
+                .customer(customer)
+                .shippingAddress(request.shippingAddress());
+
+        quantities.keySet().stream().sorted().forEach(productId -> {
+            int quantity = quantities.get(productId);
+            builder.addItem(orderCatalogPort.reserveStock(productId, quantity), quantity);
+        });
+
+        CustomerOrder order = builder.build();
+        order.awaitPayment();
+        CustomerOrder saved = orderRepository.saveAndFlush(order);
+        log.atInfo()
+                .addKeyValue("orderId", saved.getId())
+                .addKeyValue("customerId", customer.getId())
+                .addKeyValue("orderStatus", saved.getStatus())
+                .addKeyValue("itemCount", saved.getItems().size())
+                .log("Pedido criado");
+        return orderMapper.toResponse(saved);
+    }
+
+    @Transactional(readOnly = true)
+    public OrderResponse findById(Long id) {
+        AppUser currentUser = userService.currentUserEntity();
+        CustomerOrder order = findDetailedOrThrow(id);
+        ensureOwnerOrAdmin(order, currentUser);
+        return orderMapper.toResponse(order);
+    }
+
+    @Transactional(readOnly = true)
+    public PageResponse<OrderResponse> search(Pageable pageable) {
+        AppUser currentUser = userService.currentUserEntity();
+        Pageable bounded = PageRequest.of(pageable.getPageNumber(), Math.min(pageable.getPageSize(), 100),
+                pageable.getSort());
+        Page<CustomerOrder> orders = currentUser.getRole() == UserRole.ADMIN
+                ? orderRepository.findAll(bounded)
+                : orderRepository.findByCustomerId(currentUser.getId(), bounded);
+        return PageResponse.from(orders.map(orderMapper::toResponse));
+    }
+
+    @Transactional
+    public OrderResponse cancel(Long id) {
+        AppUser currentUser = userService.currentUserEntity();
+        CustomerOrder order = findForUpdateOrThrow(id);
+        ensureOwnerOrAdmin(order, currentUser);
+        order.cancel();
+        restoreStock(order);
+        orderRepository.save(order);
+        return orderMapper.toResponse(order);
+    }
+
+    @Transactional
+    public OrderResponse ship(Long id) {
+        CustomerOrder order = findForUpdateOrThrow(id);
+        order.ship();
+        return orderMapper.toResponse(order);
+    }
+
+    @Transactional
+    public OrderResponse deliver(Long id) {
+        CustomerOrder order = findForUpdateOrThrow(id);
+        order.deliver();
+        return orderMapper.toResponse(order);
+    }
+
+    private Map<Long, Integer> aggregateItems(List<CreateOrderItemRequest> items) {
+        Map<Long, Integer> quantities = new LinkedHashMap<>();
+        for (CreateOrderItemRequest item : items) {
+            try {
+                quantities.merge(item.productId(), item.quantity(), Math::addExact);
+            } catch (ArithmeticException ex) {
+                throw new ValidationException("A quantidade total de um item excede o limite permitido");
+            }
+        }
+        return quantities;
+    }
+
+    private void restoreStock(CustomerOrder order) {
+        List<OrderItem> items = order.getItems().stream()
+                .sorted((left, right) -> Long.compare(
+                        left.getProductId(), right.getProductId()))
+                .toList();
+        for (OrderItem item : items) {
+            orderCatalogPort.restoreStock(item.getProductId(), item.getQuantity());
+        }
+    }
+
+    private CustomerOrder findDetailedOrThrow(Long id) {
+        return orderRepository.findDetailedById(id)
+                .orElseThrow(() -> new ResourceNotFoundException("Pedido não encontrado: " + id));
+    }
+
+    private CustomerOrder findForUpdateOrThrow(Long id) {
+        CustomerOrder order = orderRepository.findByIdForUpdate(id)
+                .orElseThrow(() -> new ResourceNotFoundException("Pedido não encontrado: " + id));
+        order.getItems().size();
+        return order;
+    }
+
+    private void ensureOwnerOrAdmin(CustomerOrder order, AppUser user) {
+        if (user.getRole() != UserRole.ADMIN && !order.getCustomer().getId().equals(user.getId())) {
+            throw new ResourceNotFoundException("Pedido não encontrado: " + order.getId());
+        }
+    }
+}
