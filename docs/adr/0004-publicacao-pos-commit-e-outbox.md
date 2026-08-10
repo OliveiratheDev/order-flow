@@ -28,8 +28,9 @@ dependem de RabbitMQ.
 
 Mensagens terão envelope versionado, delivery mode persistente, publisher confirm
 correlacionado e `mandatory` com publisher returns. O listener aguardará a confirmação por
-tempo limitado. Falhas serão absorvidas depois de registradas com envelope completo,
-routing key e métrica; não será devolvido erro ao cliente depois que o commit já ocorreu.
+tempo limitado. Falhas serão absorvidas depois de registradas com identificadores do evento,
+versão, routing key, correlação e métrica; o payload não será copiado para logs e não será
+devolvido erro ao cliente depois que o commit já ocorreu.
 
 Aceitamos explicitamente a janela residual entre commit e publicação. O Outbox Pattern é a
 evolução recomendada quando a perda dessa mensagem deixar de ser aceitável: pedido e evento
@@ -67,7 +68,8 @@ documentado e observável, não tratado como resolvido.
 ### Negativas
 
 - queda do processo após commit e antes da publicação ainda pode perder o evento;
-- log para reprocessamento manual não substitui armazenamento durável;
+- metadados no log ajudam a conciliar a falha, mas não substituem armazenamento durável nem
+  permitem reconstruir o payload isoladamente;
 - aguardar confirm acrescenta latência após o commit.
 
 ### Neutras

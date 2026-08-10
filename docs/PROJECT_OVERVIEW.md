@@ -170,8 +170,9 @@ O adaptador de saída recebe `OrderCreated`, `OrderPaid` e `OrderCancelled` em `
 converte cada fato em payload externo v1 e publica com delivery mode persistente. Confirms
 correlacionados verificam a aceitação pelo broker. `mandatory` e publisher returns tornam
 visível uma routing key sem binding. Falhas não induzem o cliente a repetir uma transação já
-confirmada: envelope completo, routing key e correlação ficam no log, e a métrica
-`orderflow.messaging.order_event.publications` registra sucesso/falha por tipo.
+confirmada: identificadores do evento, versão, routing key e correlação ficam no log sem o
+payload, e a métrica `orderflow.messaging.order_event.publications` registra sucesso/falha
+por tipo.
 
 Isso não fecha o dual write. O banco pode confirmar e o processo cair antes de publicar. A
 decisão atual reduz a janela, mede falhas conhecidas e mantém Outbox como evolução registrada
@@ -233,6 +234,12 @@ segura e um identificador de correlação; o detalhe técnico permanece no log.
 Cada requisição recebe `X-Correlation-Id`. Valores seguros enviados pelo cliente são
 preservados; caso contrário, a API gera um UUID. O identificador aparece na resposta, no MDC,
 nos erros e na chamada ao gateway HTTP.
+
+Os profiles `dev` e `docker` mantêm texto legível e exibem `correlationId`, `userId` e pares
+chave-valor do SLF4J. O profile `prod` usa JSON Logstash nativo do Spring Boot, que transforma
+MDC e `addKeyValue` em campos consultáveis. O executor dedicado do Asaas copia e restaura o
+MDC entre threads; jobs agendados criam uma correlação por execução e listeners restauram o
+contexto anterior ao finalizar.
 
 O Actuator expõe somente `health`, `info`, `metrics`, `prometheus` e `circuitbreakers`.
 Nos profiles Docker e produção, a porta de gerenciamento `9090` fica separada da API e

@@ -231,8 +231,9 @@ Todos os eventos são publicados no exchange `order.events` somente em
 Cada item de `OrderCreated` contém `productId`, `productName`, `sku`, `quantity`,
 `unitPrice` e `lineTotal`. Mensagens usam delivery mode persistente; o publicador aguarda o
 confirm correlacionado por até `RABBITMQ_PUBLISHER_CONFIRM_TIMEOUT` e trata retorno sem
-binding como falha. A falha é registrada com o envelope necessário para operação manual e na
-métrica `orderflow.messaging.order_event.publications` (`event.type` e `result`).
+binding como falha. A falha registra identificadores, versão, routing key e correlação, sem
+copiar o payload para o log, além da métrica
+`orderflow.messaging.order_event.publications` (`event.type` e `result`).
 
 O commit PostgreSQL e a publicação AMQP não são atômicos. `AFTER_COMMIT` impede evento de
 transação revertida, mas ainda existe uma janela em que o pedido foi confirmado e o broker
@@ -318,7 +319,7 @@ rollback, roteamento, auditoria, consumo idempotente, retry, DLQ e serializaçã
 fixas. O JaCoCo interrompe o build abaixo de 70% de cobertura de linhas. O relatório fica em
 `target/site/jacoco/index.html`.
 
-Última validação local da baseline em 09/08/2026: **164 testes aprovados** e **88,06% de
+Última validação local da baseline em 09/08/2026: **167 testes aprovados** e **88,03% de
 cobertura de linhas**.
 
 ## Configuração e produção
@@ -331,6 +332,8 @@ Pontos importantes:
 - `prod` exige PostgreSQL, Redis, RabbitMQ e `JWT_SECRET`; Swagger e bootstrap de
   administrador ficam desativados;
 - logs do perfil `prod` são JSON e incluem contexto de correlação;
+- logs dos profiles `dev` e `docker` permanecem legíveis e exibem correlação, usuário e
+  campos estruturados;
 - o gateway padrão é um simulador determinístico, adequado à demonstração do portfólio;
 - o Sandbox Asaas é ativado com `docker,payment-asaas`; a chave fica somente no `.env`;
 - produção usa `prod,payment-asaas` e `https://api.asaas.com/v3`; o webhook já está
