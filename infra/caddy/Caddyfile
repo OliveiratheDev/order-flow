@@ -1,0 +1,9 @@
+{$ORDERFLOW_DOMAIN} {
+	@internal path /actuator* /swagger-ui* /v3/api-docs* /webjars*
+	respond @internal 404
+	reverse_proxy app:8080
+}
+
+{$GRAFANA_DOMAIN} {
+	reverse_proxy grafana:3000
+}

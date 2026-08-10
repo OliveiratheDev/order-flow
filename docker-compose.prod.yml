@@ -12,6 +12,11 @@ services:
       interval: 10s
       timeout: 5s
       retries: 10
+    deploy:
+      resources:
+        limits:
+          cpus: "1.0"
+          memory: 768M
     restart: unless-stopped
 
   redis:
@@ -26,6 +31,11 @@ services:
       interval: 10s
       timeout: 5s
       retries: 10
+    deploy:
+      resources:
+        limits:
+          cpus: "0.5"
+          memory: 256M
     restart: unless-stopped
 
   rabbitmq:
@@ -40,6 +50,11 @@ services:
       interval: 10s
       timeout: 5s
       retries: 10
+    deploy:
+      resources:
+        limits:
+          cpus: "1.0"
+          memory: 512M
     restart: unless-stopped
 
   app:
@@ -87,9 +102,8 @@ services:
       PAYMENT_RECONCILIATION_LOCK_AT_MOST: ${PAYMENT_RECONCILIATION_LOCK_AT_MOST:-15m}
       PAYMENT_RECONCILIATION_LOCK_AT_LEAST: ${PAYMENT_RECONCILIATION_LOCK_AT_LEAST:-1m}
       MANAGEMENT_PORT: 9090
-    ports:
-      - "${APP_PORT:-8080}:8080"
     expose:
+      - "8080"
       - "9090"
     depends_on:
       postgres:
@@ -104,6 +118,11 @@ services:
       timeout: 5s
       start_period: 60s
       retries: 6
+    deploy:
+      resources:
+        limits:
+          cpus: "1.5"
+          memory: 768M
     restart: unless-stopped
 
   prometheus:
@@ -125,6 +144,11 @@ services:
       interval: 10s
       timeout: 5s
       retries: 10
+    deploy:
+      resources:
+        limits:
+          cpus: "1.0"
+          memory: 512M
     restart: unless-stopped
 
   grafana:
@@ -147,6 +171,36 @@ services:
       interval: 10s
       timeout: 5s
       retries: 10
+    deploy:
+      resources:
+        limits:
+          cpus: "0.5"
+          memory: 384M
+    restart: unless-stopped
+
+  caddy:
+    image: caddy:2.11.4-alpine
+    environment:
+      ORDERFLOW_DOMAIN: ${ORDERFLOW_DOMAIN:?ORDERFLOW_DOMAIN é obrigatório}
+      GRAFANA_DOMAIN: ${GRAFANA_DOMAIN:?GRAFANA_DOMAIN é obrigatório}
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"
+    volumes:
+      - ./infra/caddy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on:
+      app:
+        condition: service_healthy
+      grafana:
+        condition: service_healthy
+    deploy:
+      resources:
+        limits:
+          cpus: "0.5"
+          memory: 128M
     restart: unless-stopped
 
 volumes:
@@ -155,3 +209,5 @@ volumes:
   rabbitmq_data:
   prometheus_data:
   grafana_data:
+  caddy_data:
+  caddy_config:
