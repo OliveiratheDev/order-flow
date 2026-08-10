@@ -113,7 +113,7 @@ Sandbox Asaas no Compose local, configure o `.env` sem versioná-lo:
 ```dotenv
 SPRING_PROFILES_ACTIVE=docker,payment-asaas
 ASAAS_BASE_URL=https://api-sandbox.asaas.com/v3
-ASAAS_API_KEY=<chave-do-sandbox>
+ASAAS_API_KEY='$aact_hmlg_chave-do-sandbox'
 ASAAS_USER_AGENT=OrderFlow/1.0
 ASAAS_PAYMENT_DUE_DAYS=3
 ASAAS_CONNECT_TIMEOUT=3s
@@ -130,6 +130,8 @@ PAYMENT_RECONCILIATION_LOCK_AT_LEAST=1m
 O adapter envia a chave no header `access_token`, identifica a aplicação por `User-Agent`,
 reutiliza o cliente pelo `externalReference`, persiste a URL da fatura e cancela a cobrança
 remota quando o pagamento local é cancelado. CPF/CNPJ é obrigatório no cadastro de clientes.
+As aspas simples no `.env` preservam o `$` inicial da chave e impedem que o Docker Compose
+tente interpretá-la como uma variável.
 
 Conexão, leitura e `TimeLimiter` usam limite de 3 segundos. A criação de cobrança não é
 repetida automaticamente: o endpoint do Asaas documenta `externalReference`, mas não uma
