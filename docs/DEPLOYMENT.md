@@ -3,9 +3,9 @@
 ## Escopo deste guia
 
 O repositório entrega uma imagem Docker da API e um Compose de produção com OrderFlow,
-PostgreSQL, Redis, RabbitMQ, Prometheus e Grafana. Provisionamento da VPS, DNS, TLS, firewall,
-backups externos e gerenciador de segredos dependem da plataforma escolhida e não são
-automatizados nesta baseline.
+PostgreSQL, Redis, RabbitMQ, Prometheus, Grafana e Caddy. O Caddy encerra TLS, renova os
+certificados e redireciona HTTP para HTTPS. Provisionamento da VPS, DNS, firewall, backups
+externos e gerenciador de segredos dependem da plataforma escolhida.
 
 ## Artefatos
 
@@ -13,7 +13,8 @@ automatizados nesta baseline.
   runtime não-root;
 - [`docker-compose.yml`](../docker-compose.yml): ambiente local com portas de banco expostas;
 - [`docker-compose.prod.yml`](../docker-compose.prod.yml): ambiente de implantação, sem
-  publicar PostgreSQL, Redis ou RabbitMQ no host;
+  publicar API, Actuator, PostgreSQL, Redis, RabbitMQ, Prometheus ou Grafana no host;
+- [`infra/caddy/Caddyfile`](../infra/caddy/Caddyfile): proxy HTTPS da API e do Grafana;
 - [`.env.example`](../.env.example): catálogo de variáveis, sem valores reais.
 
 ## Preparar o ambiente
@@ -21,9 +22,10 @@ automatizados nesta baseline.
 1. Instale Docker Engine com Compose v2.
 2. Libere somente SSH, HTTP e HTTPS no firewall; não publique `5432`, `6379`, `5672` nem
    `15672`.
-3. Configure um reverse proxy com certificado válido para encaminhar HTTPS à porta da API.
+3. Aponte registros DNS `A` ou `AAAA` dos domínios da API e do Grafana para a VPS.
 4. Crie armazenamento e política de backup para o volume PostgreSQL.
-5. Mantenha o arquivo `.env` fora do Git e restrito ao usuário do serviço.
+5. Mantenha o arquivo `.env` fora do Git e restrito ao usuário do serviço com
+   `chmod 600 .env`.
 
 Crie `.env` a partir do exemplo e substitua todos os placeholders. No mínimo:
 
@@ -45,14 +47,27 @@ RABBITMQ_CONSUMER_PREFETCH=10
 NOTIFICATION_PROCESSED_EVENT_RETENTION=30d
 NOTIFICATION_CLEANUP_CRON="0 0 3 * * *"
 JWT_SECRET=<segredo-aleatorio-com-ao-menos-32-bytes>
-APP_PORT=8080
+ORDERFLOW_DOMAIN=api.seudominio.com.br
+GRAFANA_DOMAIN=grafana.seudominio.com.br
 GRAFANA_ADMIN_USER=<usuario-operacional>
 GRAFANA_ADMIN_PASSWORD=<senha-aleatoria-exclusiva-do-grafana>
 SPRING_PROFILES_ACTIVE=prod
 ```
 
-Não reutilize senhas entre banco, Redis, RabbitMQ e JWT. Uma alteração de `JWT_SECRET`
-invalida tokens emitidos anteriormente.
+Não reutilize senhas entre banco, Redis, RabbitMQ, Grafana e JWT. Os valores de produção
+devem ser diferentes dos usados localmente. Uma alteração de `JWT_SECRET` invalida tokens
+emitidos anteriormente.
+
+## HTTPS e superfície pública
+
+O Compose publica somente `80/tcp`, `443/tcp` e `443/udp` pelo Caddy. Com os dois domínios
+resolvendo para a VPS e essas portas liberadas, o Caddy solicita certificados válidos,
+renova-os automaticamente e redireciona HTTP para HTTPS. A API fica em
+`https://${ORDERFLOW_DOMAIN}` e o Grafana em `https://${GRAFANA_DOMAIN}`.
+
+O proxy devolve 404 para `/actuator`, `/swagger-ui`, `/v3/api-docs` e `/webjars` antes de a
+requisição chegar à aplicação. O profile `prod` também desativa o Swagger. Actuator,
+Prometheus e os datastores continuam acessíveis somente pela rede interna do Compose.
 
 ## RabbitMQ
 
@@ -181,10 +196,9 @@ HTTP.
 
 ## Prometheus e Grafana
 
-A aplicação usa a porta `8080` para a API e a porta interna `9090` para o Actuator. O
-Prometheus acessa `app:9090/actuator/prometheus`; nem o Actuator, nem Prometheus, nem Grafana
-são publicados no host pelo Compose de produção. Publique o Grafana somente por reverse proxy
-autenticado e HTTPS, se o acesso remoto for necessário.
+A aplicação usa as portas internas `8080` para a API e `9090` para o Actuator. O Prometheus
+acessa `app:9090/actuator/prometheus`; nenhum dos dois é publicado no host. O Grafana é
+exposto exclusivamente pelo Caddy em HTTPS e continua protegido por usuário e senha.
 
 Arquivos versionados:
 
@@ -204,6 +218,8 @@ O Compose deve resolver todas as variáveis obrigatórias sem iniciar containers
 
 ```bash
 docker compose -f docker-compose.prod.yml config --quiet
+docker compose -f docker-compose.prod.yml run --rm --no-deps caddy \
+  caddy validate --config /etc/caddy/Caddyfile --adapter caddyfile
 ```
 
 Se o comando falhar, corrija o `.env` antes de prosseguir.
@@ -217,7 +233,15 @@ docker compose -f docker-compose.prod.yml ps
 ```
 
 O container da aplicação só inicia depois que PostgreSQL, Redis e RabbitMQ estiverem
-saudáveis. O Flyway aplica migrations pendentes antes de o Hibernate validar o schema.
+saudáveis. Prometheus e Grafana aguardam as suas dependências, e o Caddy aguarda API e
+Grafana. O Flyway aplica migrations pendentes antes de o Hibernate validar o schema.
+
+Confirme também que a imagem ficou abaixo do limite de 200 MB e executa com o usuário
+`orderflow`:
+
+```bash
+docker image inspect overflow-app --format '{{.Size}} bytes; user={{.Config.User}}'
+```
 
 ## Verificação pós-deploy
 

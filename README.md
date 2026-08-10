@@ -339,8 +339,10 @@ Pontos importantes:
 - produção usa `prod,payment-asaas` e `https://api.asaas.com/v3`; o webhook já está
   implementado e a integração possui timeout, circuit breaker, fallback e conciliação
   periódica com lock distribuído;
-- domínio, DNS, certificado TLS e reverse proxy pertencem à infraestrutura de destino e não
-  são criados pelo Compose desta baseline.
+- o Compose de produção inclui Caddy, publica somente HTTP/HTTPS, emite e renova TLS e
+  impede acesso público ao Swagger e ao Actuator;
+- `ORDERFLOW_DOMAIN` e `GRAFANA_DOMAIN` devem apontar para a VPS antes do primeiro deploy;
+- DNS, firewall, backup e segredos da VPS continuam sendo responsabilidades operacionais.
 
 ## Documentos
 
