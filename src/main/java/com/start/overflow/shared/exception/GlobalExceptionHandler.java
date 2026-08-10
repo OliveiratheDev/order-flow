@@ -13,6 +13,7 @@ import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException;
+import org.springframework.web.servlet.resource.NoResourceFoundException;
 
 import java.net.URI;
 import java.time.Instant;
@@ -122,6 +123,12 @@ public class GlobalExceptionHandler {
                 ex.getName(), ex.getRequiredType() != null ? ex.getRequiredType().getSimpleName() : "outro");
         return buildProblemDetail(HttpStatus.BAD_REQUEST, "/errors/type-mismatch",
                 "Parâmetro inválido", detail, request);
+    }
+
+    @ExceptionHandler(NoResourceFoundException.class)
+    public ProblemDetail handleNoResourceFound(HttpServletRequest request) {
+        return buildProblemDetail(HttpStatus.NOT_FOUND, "/errors/endpoint-not-found",
+                "Endpoint não encontrado", "O endpoint solicitado não existe", request);
     }
 
     @ExceptionHandler(DataIntegrityViolationException.class)
