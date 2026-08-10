@@ -4,6 +4,9 @@ import com.start.overflow.identity.service.UserService;
 import io.micrometer.core.instrument.MeterRegistry;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.Arguments;
+import org.junit.jupiter.params.provider.MethodSource;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.testcontainers.service.connection.ServiceConnection;
@@ -24,7 +27,10 @@ import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.ObjectMapper;
 
 import java.time.Duration;
+import java.math.BigDecimal;
+import java.util.Map;
 import java.util.Set;
+import java.util.stream.Stream;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.hamcrest.Matchers.containsString;
@@ -221,6 +227,38 @@ class ApplicationHttpIntegrationTest {
                 .andExpect(status().isNoContent());
     }
 
+    @ParameterizedTest(name = "{0}")
+    @MethodSource("productFilterScenarios")
+    void deveCombinarFiltros_quandoBuscarProdutos(String scenario,
+                                                   Map<String, String> parameters,
+                                                   int expectedElements) throws Exception {
+        seedProductsForFiltering();
+        MockHttpServletRequestBuilder request = get("/api/v1/products");
+        parameters.forEach(request::param);
+
+        mockMvc.perform(request)
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.totalElements").value(expectedElements));
+    }
+
+    @Test
+    void deveLimitarPagina_quandoTamanhoSuperarCem() throws Exception {
+        seedProductsForFiltering();
+
+        mockMvc.perform(get("/api/v1/products").param("size", "500"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.size").value(100));
+    }
+
+    @Test
+    void deveRetornarErro_quandoFaixaDePrecoForInvalida() throws Exception {
+        mockMvc.perform(get("/api/v1/products")
+                        .param("minPrice", "200.00")
+                        .param("maxPrice", "100.00"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.detail").value("A faixa de preço informada é inválida"));
+    }
+
     @Test
     void actuatorExposesOnlyOperationalEndpoints() throws Exception {
         String adminToken = token(login(ADMIN_EMAIL, ADMIN_PASSWORD));
@@ -355,6 +393,53 @@ class ApplicationHttpIntegrationTest {
                 .andExpect(status().isCreated())
                 .andExpect(jsonPath("$.tokenType").value("Bearer"))
                 .andReturn();
+    }
+
+    static Stream<Arguments> productFilterScenarios() {
+        return Stream.of(
+                Arguments.of("sem filtros", Map.of(), 3),
+                Arguments.of("nome", Map.of("name", "alpha"), 1),
+                Arguments.of("categoria", Map.of("categoryId", "1"), 2),
+                Arguments.of("preço mínimo", Map.of("minPrice", "100.00"), 2),
+                Arguments.of("preço máximo", Map.of("maxPrice", "200.00"), 2),
+                Arguments.of("ativo", Map.of("active", "true"), 2),
+                Arguments.of("todos", Map.of(
+                        "name", "alpha",
+                        "categoryId", "1",
+                        "minPrice", "40.00",
+                        "maxPrice", "60.00",
+                        "active", "true"), 1),
+                Arguments.of("faixa e estado", Map.of(
+                        "minPrice", "100.00",
+                        "maxPrice", "200.00",
+                        "active", "false"), 1),
+                Arguments.of("categoria e estado", Map.of(
+                        "categoryId", "2",
+                        "active", "true"), 1));
+    }
+
+    private void seedProductsForFiltering() {
+        Long firstCategory = jdbc.queryForObject("""
+                INSERT INTO category (name, slug, active)
+                VALUES (?, ?, true)
+                RETURNING id
+                """, Long.class, "Casa", "casa");
+        Long secondCategory = jdbc.queryForObject("""
+                INSERT INTO category (name, slug, active)
+                VALUES (?, ?, true)
+                RETURNING id
+                """, Long.class, "Tecnologia", "tecnologia");
+        insertProduct(firstCategory, "Alpha", "ALPHA-1", "50.00", true);
+        insertProduct(firstCategory, "Beta", "BETA-1", "150.00", false);
+        insertProduct(secondCategory, "Gamma", "GAMMA-1", "250.00", true);
+    }
+
+    private void insertProduct(Long categoryId, String name, String sku,
+                               String price, boolean active) {
+        jdbc.update("""
+                INSERT INTO product (category_id, name, sku, price, stock, active)
+                VALUES (?, ?, ?, ?, 10, ?)
+                """, categoryId, name, sku, new BigDecimal(price), active);
     }
 
     private MvcResult login(String email, String password) throws Exception {
