@@ -7,6 +7,8 @@ import com.start.overflow.order.port.out.OrderCatalogPort;
 import com.start.overflow.shared.exception.ResourceNotFoundException;
 import org.springframework.cache.annotation.CacheEvict;
 import org.springframework.stereotype.Component;
+import org.springframework.transaction.annotation.Propagation;
+import org.springframework.transaction.annotation.Transactional;
 
 @Component
 public class OrderCatalogAdapter implements OrderCatalogPort {
@@ -18,6 +20,7 @@ public class OrderCatalogAdapter implements OrderCatalogPort {
 
     @Override
     @CacheEvict(cacheNames = "products", allEntries = true)
+    @Transactional(propagation = Propagation.REQUIRED)
     public OrderProductSnapshot reserveStock(Long productId, int quantity) {
         Product product = findProductForUpdate(productId);
         product.reserveStock(quantity);

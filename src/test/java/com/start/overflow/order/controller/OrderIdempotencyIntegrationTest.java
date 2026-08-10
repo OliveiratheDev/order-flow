@@ -5,7 +5,7 @@ import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.testcontainers.service.connection.ServiceConnection;
-import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
+import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.security.core.authority.SimpleGrantedAuthority;
@@ -84,6 +84,11 @@ class OrderIdempotencyIntegrationTest {
                     (id, category_id, name, sku, price, stock, active, created_at, updated_at, version)
                 VALUES (20, 10, 'Produto', 'SKU-20', 49.90, 10, TRUE, NOW(), NOW(), 0)
                 """);
+        jdbc.update("""
+          INSERT INTO product
+              (id, category_id, name, sku, price, stock, active, created_at, updated_at, version)
+          VALUES (21, 10, 'Produto B', 'SKU-21', 29.90, 1, TRUE, NOW(), NOW(), 0)
+          """);
         Set<String> keys = redis.keys("idem:*");
         if (!keys.isEmpty()) {
             redis.delete(keys);
@@ -121,7 +126,7 @@ class OrderIdempotencyIntegrationTest {
 
         mockMvc.perform(authenticatedPost("retry-order-2", REQUEST.replace("\"quantity\": 2",
                         "\"quantity\": 3")))
-                .andExpect(status().isUnprocessableContent())
+                .andExpect(status().isUnprocessableEntity())
                 .andExpect(jsonPath("$.type")
                         .value("https://orderflow.dev/errors/idempotency-payload-mismatch"));
 
@@ -175,5 +180,33 @@ class OrderIdempotencyIntegrationTest {
         } catch (Exception exception) {
             throw new IllegalStateException(exception);
         }
+    }
+
+    @Test
+    void rejectedOrderDoesNotChangeStockOfEarlierProduct() throws Exception {
+        String request = """
+              {
+                "shippingAddress": "Rua B, 456",
+                "items": [
+                  {"productId": 20, "quantity": 2},
+                  {"productId": 21, "quantity": 2}
+                ]
+              }
+              """;
+
+        mockMvc.perform(authenticatedPost("stock-rollback-1", request))
+                .andExpect(status().isConflict());
+
+        assertThat(jdbc.queryForObject(
+                "SELECT stock FROM product WHERE id = 20", Integer.class))
+                .isEqualTo(10);
+
+        assertThat(jdbc.queryForObject(
+                "SELECT stock FROM product WHERE id = 21", Integer.class))
+                .isEqualTo(1);
+
+        assertThat(jdbc.queryForObject(
+                "SELECT COUNT(*) FROM customer_order", Long.class))
+                .isEqualTo(0L);
     }
 }
