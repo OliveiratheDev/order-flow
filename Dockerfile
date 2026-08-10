@@ -21,9 +21,10 @@ COPY --from=build --chown=orderflow:orderflow \
     /workspace/target/extracted/application/overflow-0.0.1-SNAPSHOT.jar ./application.jar
 
 USER orderflow
-EXPOSE 8080
+ENV MANAGEMENT_PORT=9090
+EXPOSE 8080 9090
 
 HEALTHCHECK --interval=10s --timeout=3s --start-period=45s --retries=6 \
-    CMD wget --quiet --output-document=/dev/null http://localhost:8080/actuator/health || exit 1
+    CMD wget --quiet --output-document=/dev/null http://localhost:9090/actuator/health || exit 1
 
 ENTRYPOINT ["java", "-jar", "application.jar"]

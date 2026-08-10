@@ -86,8 +86,11 @@ services:
       PAYMENT_RECONCILIATION_BATCH_SIZE: ${PAYMENT_RECONCILIATION_BATCH_SIZE:-200}
       PAYMENT_RECONCILIATION_LOCK_AT_MOST: ${PAYMENT_RECONCILIATION_LOCK_AT_MOST:-15m}
       PAYMENT_RECONCILIATION_LOCK_AT_LEAST: ${PAYMENT_RECONCILIATION_LOCK_AT_LEAST:-1m}
+      MANAGEMENT_PORT: 9090
     ports:
       - "${APP_PORT:-8080}:8080"
+    expose:
+      - "9090"
     depends_on:
       postgres:
         condition: service_healthy
@@ -96,14 +99,59 @@ services:
       rabbitmq:
         condition: service_healthy
     healthcheck:
-      test: ["CMD", "wget", "--quiet", "--output-document=/dev/null", "http://localhost:8080/actuator/health"]
+      test: ["CMD", "wget", "--quiet", "--output-document=/dev/null", "http://localhost:9090/actuator/health"]
       interval: 15s
       timeout: 5s
       start_period: 60s
       retries: 6
     restart: unless-stopped
 
+  prometheus:
+    image: prom/prometheus:v3.13.1
+    command:
+      - "--config.file=/etc/prometheus/prometheus.yml"
+      - "--storage.tsdb.path=/prometheus"
+    expose:
+      - "9090"
+    volumes:
+      - ./infra/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ./infra/prometheus/alerts.yml:/etc/prometheus/rules/alerts.yml:ro
+      - prometheus_data:/prometheus
+    depends_on:
+      app:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "--quiet", "http://localhost:9090/-/healthy"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    restart: unless-stopped
+
+  grafana:
+    image: grafana/grafana:13.1.1
+    environment:
+      GF_SECURITY_ADMIN_USER: ${GRAFANA_ADMIN_USER:?GRAFANA_ADMIN_USER é obrigatório}
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD:?GRAFANA_ADMIN_PASSWORD é obrigatório}
+      GF_USERS_ALLOW_SIGN_UP: "false"
+    expose:
+      - "3000"
+    volumes:
+      - ./infra/grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./infra/grafana/dashboards:/var/lib/grafana/dashboards:ro
+      - grafana_data:/var/lib/grafana
+    depends_on:
+      prometheus:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "--quiet", "http://localhost:3000/api/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    restart: unless-stopped
+
 volumes:
   postgres_data:
   redis_data:
   rabbitmq_data:
+  prometheus_data:
+  grafana_data:
