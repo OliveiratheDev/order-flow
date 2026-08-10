@@ -2,6 +2,7 @@ package com.start.overflow.catalog.service;
 
 import com.start.overflow.catalog.dto.CreateProductRequest;
 import com.start.overflow.catalog.dto.ProductResponse;
+import com.start.overflow.catalog.dto.ProductFilter;
 import com.start.overflow.catalog.dto.UpdateProductRequest;
 import com.start.overflow.catalog.dto.UpdateStockRequest;
 import com.start.overflow.catalog.entity.Category;
@@ -9,6 +10,7 @@ import com.start.overflow.catalog.entity.Product;
 import com.start.overflow.catalog.mapper.ProductMapper;
 import com.start.overflow.catalog.repository.CategoryRepository;
 import com.start.overflow.catalog.repository.ProductRepository;
+import com.start.overflow.catalog.repository.ProductSpecifications;
 import com.start.overflow.shared.dto.PageResponse;
 import com.start.overflow.shared.exception.BusinessRuleException;
 import com.start.overflow.shared.exception.ResourceNotFoundException;
@@ -56,13 +58,12 @@ public class ProductService {
     }
 
     @Transactional(readOnly = true)
-    public PageResponse<ProductResponse> search(String name, Long categoryId,
-                                                Boolean active, Pageable pageable) {
-        String normalizedName = name == null || name.isBlank() ? "" : name.strip();
+    public PageResponse<ProductResponse> search(ProductFilter filter, Pageable pageable) {
+        filter.validatePriceRange();
         Pageable bounded = PageRequest.of(pageable.getPageNumber(), Math.min(pageable.getPageSize(), 100),
                 pageable.getSort());
         Page<ProductResponse> result = productRepository
-                .search(normalizedName, categoryId, active, bounded)
+                .findAll(ProductSpecifications.from(filter), bounded)
                 .map(productMapper::toResponse);
         return PageResponse.from(result);
     }
@@ -103,7 +104,7 @@ public class ProductService {
     @Transactional(readOnly = true)
     public PageResponse<ProductResponse> searchByCategory(Long categoryId, Pageable pageable) {
         findCategoryOrThrow(categoryId);
-        return search(null, categoryId, null, pageable);
+        return search(new ProductFilter(null, categoryId, null, null, null), pageable);
     }
 
     private Product findProductOrThrow(Long id) {
