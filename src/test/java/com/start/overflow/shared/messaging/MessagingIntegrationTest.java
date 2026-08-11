@@ -18,11 +18,11 @@ import org.junit.jupiter.api.TestMethodOrder;
 import org.slf4j.MDC;
 import org.springframework.amqp.core.Message;
 import org.springframework.amqp.core.MessageProperties;
-import org.springframework.amqp.core.MessageListenerContainer;
+import org.springframework.amqp.rabbit.listener.MessageListenerContainer;
 import org.springframework.amqp.rabbit.core.RabbitAdmin;
 import org.springframework.amqp.rabbit.core.RabbitTemplate;
 import org.springframework.amqp.rabbit.listener.RabbitListenerEndpointRegistry;
-import org.springframework.amqp.support.converter.JacksonJsonMessageConverter;
+import org.springframework.amqp.support.converter.Jackson2JsonMessageConverter;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.testcontainers.service.connection.ServiceConnection;
@@ -30,14 +30,16 @@ import org.springframework.core.ParameterizedTypeReference;
 import org.springframework.dao.TransientDataAccessResourceException;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.test.context.bean.override.mockito.MockitoSpyBean;
+import org.springframework.test.context.DynamicPropertyRegistry;
+import org.springframework.test.context.DynamicPropertySource;
 import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.support.TransactionTemplate;
 import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
 import org.testcontainers.postgresql.PostgreSQLContainer;
 import org.testcontainers.rabbitmq.RabbitMQContainer;
-import tools.jackson.databind.JsonNode;
-import tools.jackson.databind.json.JsonMapper;
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.json.JsonMapper;
 
 import java.math.BigDecimal;
 import java.nio.charset.StandardCharsets;
@@ -61,7 +63,7 @@ import static org.mockito.Mockito.reset;
         "spring.cache.type=none",
         "orderflow.messaging.rabbit.enabled=true",
         "orderflow.messaging.rabbit.publisher-confirm-timeout=2s",
-        "spring.rabbitmq.listener.simple.retry.max-retries=2",
+        "spring.rabbitmq.listener.simple.retry.max-attempts=3",
         "spring.rabbitmq.listener.simple.retry.initial-interval=100ms",
         "spring.rabbitmq.listener.simple.retry.max-interval=200ms",
         "spring.rabbitmq.listener.simple.concurrency=1",
@@ -78,7 +80,6 @@ class MessagingIntegrationTest {
     private static final Duration POLL_INTERVAL = Duration.ofMillis(100);
 
     @Container
-    @ServiceConnection
     static final RabbitMQContainer RABBITMQ =
             new RabbitMQContainer("rabbitmq:3.13-management-alpine");
 
@@ -87,10 +88,18 @@ class MessagingIntegrationTest {
     static final PostgreSQLContainer POSTGRES =
             new PostgreSQLContainer("postgres:16-alpine");
 
+    @DynamicPropertySource
+    static void rabbitProperties(DynamicPropertyRegistry registry) {
+        registry.add("spring.rabbitmq.host", RABBITMQ::getHost);
+        registry.add("spring.rabbitmq.port", RABBITMQ::getAmqpPort);
+        registry.add("spring.rabbitmq.username", RABBITMQ::getAdminUsername);
+        registry.add("spring.rabbitmq.password", RABBITMQ::getAdminPassword);
+    }
+
     @Autowired RabbitAdmin rabbitAdmin;
     @Autowired RabbitTemplate rabbitTemplate;
     @Autowired RabbitListenerEndpointRegistry listenerRegistry;
-    @Autowired JacksonJsonMessageConverter messageConverter;
+    @Autowired Jackson2JsonMessageConverter messageConverter;
     @Autowired JdbcTemplate jdbc;
     @Autowired UserRepository userRepository;
     @Autowired OrderRepository orderRepository;
@@ -130,11 +139,11 @@ class MessagingIntegrationTest {
         JsonNode json = JsonMapper.builder().findAndAddModules().build()
                 .readTree(message.getBody());
 
-        assertThat(json.get("eventId").asString()).isNotBlank();
-        assertThat(json.get("eventType").asString()).isEqualTo("OrderCreated");
+        assertThat(json.get("eventId").asText()).isNotBlank();
+        assertThat(json.get("eventType").asText()).isEqualTo("OrderCreated");
         assertThat(json.get("eventVersion").asInt()).isEqualTo(1);
-        assertThat(Instant.parse(json.get("occurredAt").asString())).isNotNull();
-        assertThat(json.get("correlationId").asString()).isNotBlank();
+        assertThat(Instant.parse(json.get("occurredAt").asText())).isNotNull();
+        assertThat(json.get("correlationId").asText()).isNotBlank();
         assertThat(json.get("payload").get("orderId").asLong()).isEqualTo(order.getId());
         assertThat(json.get("payload").get("customerId").asLong())
                 .isEqualTo(order.getCustomer().getId());
@@ -183,11 +192,11 @@ class MessagingIntegrationTest {
         JsonMapper mapper = JsonMapper.builder().findAndAddModules().build();
         List<String> eventTypes = List.of(
                 mapper.readTree(receive(RabbitTopology.AUDIT_QUEUE).getBody())
-                        .get("eventType").asString(),
+                .get("eventType").asText(),
                 mapper.readTree(receive(RabbitTopology.AUDIT_QUEUE).getBody())
-                        .get("eventType").asString(),
+                .get("eventType").asText(),
                 mapper.readTree(receive(RabbitTopology.AUDIT_QUEUE).getBody())
-                        .get("eventType").asString());
+                .get("eventType").asText());
 
         assertThat(eventTypes)
                 .containsExactly("OrderCreated", "OrderPaid", "OrderCancelled");

@@ -4,7 +4,7 @@ import com.start.overflow.notification.adapter.out.persistence.NotificationDeliv
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.boot.amqp.autoconfigure.RabbitProperties;
+import org.springframework.boot.autoconfigure.amqp.RabbitProperties;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.testcontainers.service.connection.ServiceConnection;
 import org.springframework.dao.TransientDataAccessResourceException;
@@ -140,7 +140,7 @@ class PaymentNotificationServiceIntegrationTest {
         var listener = rabbitProperties.getListener().getSimple();
 
         assertThat(listener.getRetry().isEnabled()).isTrue();
-        assertThat(listener.getRetry().getMaxRetries()).isEqualTo(2);
+        assertThat(listener.getRetry().getMaxAttempts()).isEqualTo(3);
         assertThat(listener.getRetry().getInitialInterval()).isEqualTo(Duration.ofSeconds(1));
         assertThat(listener.getRetry().getMultiplier()).isEqualTo(2);
         assertThat(listener.getRetry().getMaxInterval()).isEqualTo(Duration.ofSeconds(2));

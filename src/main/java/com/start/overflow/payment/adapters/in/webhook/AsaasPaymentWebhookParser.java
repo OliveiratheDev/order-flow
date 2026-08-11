@@ -2,8 +2,8 @@ package com.start.overflow.payment.adapters.in.webhook;
 
 import org.springframework.context.annotation.Profile;
 import org.springframework.stereotype.Component;
-import tools.jackson.databind.JsonNode;
-import tools.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
 
 import java.math.BigDecimal;
 
@@ -55,7 +55,7 @@ public class AsaasPaymentWebhookParser {
             return root;
         } catch (InvalidWebhookPayloadException exception) {
             throw exception;
-        } catch (RuntimeException exception) {
+        } catch (Exception exception) {
             throw new InvalidWebhookPayloadException("O JSON do webhook é inválido", exception);
         }
     }
@@ -74,11 +74,11 @@ public class AsaasPaymentWebhookParser {
         if (valueNode == null || valueNode.isNull()) {
             return null;
         }
-        if (!valueNode.isString() || valueNode.stringValue().isBlank()) {
+        if (!valueNode.isTextual() || valueNode.textValue().isBlank()) {
             throw new InvalidWebhookPayloadException(
                     "O campo " + field + " deve ser um texto válido");
         }
-        String value = valueNode.stringValue().strip();
+        String value = valueNode.textValue().strip();
         if (value.length() > maxLength) {
             throw new InvalidWebhookPayloadException(
                     "O campo " + field + " excede o limite permitido");

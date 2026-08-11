@@ -9,23 +9,27 @@ import org.springframework.amqp.core.Message;
 import org.springframework.amqp.core.MessageProperties;
 import org.springframework.amqp.core.Queue;
 import org.springframework.amqp.core.TopicExchange;
-import org.springframework.amqp.listener.ConditionalRejectingErrorHandler;
-import org.springframework.amqp.listener.ListenerExecutionFailedException;
+import org.springframework.amqp.rabbit.listener.ConditionalRejectingErrorHandler;
+import org.springframework.amqp.rabbit.support.ListenerExecutionFailedException;
 import org.springframework.amqp.rabbit.core.RabbitTemplate;
-import org.springframework.amqp.support.converter.JacksonJsonMessageConverter;
+import org.springframework.amqp.support.converter.Jackson2JsonMessageConverter;
 import org.springframework.amqp.support.converter.MessageConversionException;
 import org.springframework.amqp.support.converter.MessageConverter;
 import org.springframework.beans.factory.SmartInitializingSingleton;
-import org.springframework.boot.retry.RetryPolicySettings;
+import org.springframework.boot.autoconfigure.amqp.RabbitRetryTemplateCustomizer;
 import org.springframework.core.ParameterizedTypeReference;
-import tools.jackson.databind.JsonNode;
-import tools.jackson.databind.json.JsonMapper;
+import org.springframework.retry.support.RetryTemplate;
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.SerializationFeature;
+import com.fasterxml.jackson.databind.json.JsonMapper;
 
 import java.math.BigDecimal;
 import java.nio.charset.StandardCharsets;
 import java.time.Instant;
 import java.util.Map;
 import java.util.UUID;
+import java.util.concurrent.atomic.AtomicInteger;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -34,6 +38,10 @@ import static org.mockito.Mockito.verify;
 
 class RabbitMessagingConfigTest {
     private final RabbitMessagingConfig config = new RabbitMessagingConfig();
+    private final ObjectMapper objectMapper = JsonMapper.builder()
+            .findAndAddModules()
+            .disable(SerializationFeature.WRITE_DATES_AS_TIMESTAMPS)
+            .build();
 
     @Test
     void declaresDurableTopicBindingsAndDeadLetterTopology() {
@@ -64,8 +72,8 @@ class RabbitMessagingConfigTest {
     }
 
     @Test
-    void serializesEnvelopeAsInspectableJsonWithJacksonThree() throws Exception {
-        MessageConverter converter = config.rabbitJsonMessageConverter();
+    void serializesEnvelopeAsInspectableJsonWithJacksonTwo() throws Exception {
+        MessageConverter converter = config.rabbitJsonMessageConverter(objectMapper);
         EventEnvelope<Map<String, Long>> envelope = new EventEnvelope<>(
                 UUID.fromString("550e8400-e29b-41d4-a716-446655440000"),
                 "OrderCreated", 1, Instant.parse("2026-08-09T20:00:00Z"),
@@ -76,9 +84,9 @@ class RabbitMessagingConfigTest {
         JsonNode json = JsonMapper.builder().findAndAddModules().build()
                 .readTree(message.getBody());
 
-        assertThat(converter).isInstanceOf(JacksonJsonMessageConverter.class);
+        assertThat(converter).isInstanceOf(Jackson2JsonMessageConverter.class);
         assertThat(message.getMessageProperties().getContentType()).isEqualTo("application/json");
-        assertThat(json.get("eventId").asString())
+        assertThat(json.get("eventId").asText())
                 .isEqualTo("550e8400-e29b-41d4-a716-446655440000");
         assertThat(json.get("eventVersion").asInt()).isEqualTo(1);
         assertThat(json.get("payload").get("orderId").asLong()).isEqualTo(42L);
@@ -86,8 +94,8 @@ class RabbitMessagingConfigTest {
 
     @Test
     void deserializesPublisherPayloadIntoConsumerContract() {
-        JacksonJsonMessageConverter converter =
-                (JacksonJsonMessageConverter) config.rabbitJsonMessageConverter();
+        Jackson2JsonMessageConverter converter =
+                (Jackson2JsonMessageConverter) config.rabbitJsonMessageConverter(objectMapper);
         EventEnvelope<OrderStatusChangedPayload> outbound = new EventEnvelope<>(
                 UUID.randomUUID(), "OrderPaid", 1, Instant.parse("2026-08-09T20:00:00Z"),
                 "correlation-123", new OrderStatusChangedPayload(42L, 7L, BigDecimal.TEN));
@@ -116,8 +124,8 @@ class RabbitMessagingConfigTest {
 
     @Test
     void poisonJsonIsClassifiedForImmediateRejection() {
-        JacksonJsonMessageConverter converter =
-                (JacksonJsonMessageConverter) config.rabbitJsonMessageConverter();
+        Jackson2JsonMessageConverter converter =
+                (Jackson2JsonMessageConverter) config.rabbitJsonMessageConverter(objectMapper);
         MessageProperties properties = new MessageProperties();
         properties.setContentType(MessageProperties.CONTENT_TYPE_JSON);
         Message poison = new Message("{".getBytes(StandardCharsets.UTF_8), properties);
@@ -135,17 +143,33 @@ class RabbitMessagingConfigTest {
 
     @Test
     void retriesOnlyTransientListenerFailures() {
-        RetryPolicySettings settings = new RetryPolicySettings();
-        config.rabbitListenerRetrySettingsCustomizer().customize(settings);
+        RabbitRetryTemplateCustomizer customizer = config.rabbitRetryTemplateCustomizer();
+        RetryTemplate transientRetry = RetryTemplate.builder()
+                .maxAttempts(3)
+                .fixedBackoff(1)
+                .build();
+        customizer.customize(RabbitRetryTemplateCustomizer.Target.LISTENER, transientRetry);
+        AtomicInteger transientAttempts = new AtomicInteger();
 
-        assertThat(settings.getExceptionPredicate()
-                .test(new IllegalStateException("banco indisponível"))).isTrue();
-        assertThat(settings.getExceptionPredicate()
-                .test(new AmqpRejectAndDontRequeueException("evento inválido"))).isFalse();
-        assertThat(settings.getExceptionPredicate()
-                .test(new ListenerExecutionFailedException(
-                        "conversão", new MessageConversionException("JSON inválido"))))
-                .isFalse();
+        assertThatThrownBy(() -> transientRetry.execute(context -> {
+            transientAttempts.incrementAndGet();
+            throw new IllegalStateException("banco indisponível");
+        })).isInstanceOf(IllegalStateException.class);
+        assertThat(transientAttempts).hasValue(3);
+
+        RetryTemplate fatalRetry = RetryTemplate.builder()
+                .maxAttempts(3)
+                .fixedBackoff(1)
+                .build();
+        customizer.customize(RabbitRetryTemplateCustomizer.Target.LISTENER, fatalRetry);
+        AtomicInteger fatalAttempts = new AtomicInteger();
+
+        assertThatThrownBy(() -> fatalRetry.execute(context -> {
+            fatalAttempts.incrementAndGet();
+            throw new ListenerExecutionFailedException("conversão",
+                    new MessageConversionException("JSON inválido"));
+        })).isInstanceOf(ListenerExecutionFailedException.class);
+        assertThat(fatalAttempts).hasValue(1);
     }
 
     private void assertWorkQueue(Queue queue, String expectedName) {

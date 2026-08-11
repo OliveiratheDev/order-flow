@@ -30,7 +30,7 @@ public class PaymentExceptionHandler {
     @ExceptionHandler(PaymentRejectedException.class)
     public ProblemDetail handleRejected(PaymentRejectedException exception,
                                         HttpServletRequest request) {
-        return problem(HttpStatus.UNPROCESSABLE_CONTENT, "/errors/payment-rejected",
+        return problem(HttpStatus.UNPROCESSABLE_ENTITY, "/errors/payment-rejected",
                 "Cobrança rejeitada", exception.getMessage(), request);
     }
 
@@ -44,7 +44,7 @@ public class PaymentExceptionHandler {
     @ExceptionHandler(PaymentException.class)
     public ProblemDetail handlePaymentRule(PaymentException exception,
                                            HttpServletRequest request) {
-        return problem(HttpStatus.UNPROCESSABLE_CONTENT, "/errors/payment-rule",
+        return problem(HttpStatus.UNPROCESSABLE_ENTITY, "/errors/payment-rule",
                 "Regra de pagamento violada", exception.getMessage(), request);
     }
 

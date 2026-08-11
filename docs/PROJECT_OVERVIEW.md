@@ -162,7 +162,7 @@ flowchart TD
 ```
 
 As três filas de trabalho apontam para a mesma DLX; a DLQ não aponta para si mesma. Mensagens
-usam JSON pelo `JacksonJsonMessageConverter` de Jackson 3, sem serialização binária Java. O
+usam JSON pelo `Jackson2JsonMessageConverter` de Jackson 2, sem serialização binária Java. O
 envelope comum contém `eventId`, `eventType`, `eventVersion`, `occurredAt`, `correlationId` e
 `payload`.
 

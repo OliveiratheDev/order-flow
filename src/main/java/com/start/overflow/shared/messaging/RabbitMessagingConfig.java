@@ -1,5 +1,6 @@
 package com.start.overflow.shared.messaging;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.amqp.AmqpRejectAndDontRequeueException;
@@ -10,14 +11,17 @@ import org.springframework.amqp.core.Queue;
 import org.springframework.amqp.core.QueueBuilder;
 import org.springframework.amqp.core.TopicExchange;
 import org.springframework.amqp.rabbit.core.RabbitTemplate;
-import org.springframework.amqp.support.converter.JacksonJsonMessageConverter;
+import org.springframework.amqp.support.converter.Jackson2JsonMessageConverter;
 import org.springframework.amqp.support.converter.MessageConversionException;
 import org.springframework.amqp.support.converter.MessageConverter;
-import org.springframework.boot.amqp.autoconfigure.RabbitListenerRetrySettingsCustomizer;
 import org.springframework.beans.factory.SmartInitializingSingleton;
+import org.springframework.boot.autoconfigure.amqp.RabbitRetryTemplateCustomizer;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.retry.RetryCallback;
+import org.springframework.retry.RetryContext;
+import org.springframework.retry.RetryListener;
 
 @Configuration(proxyBeanMethods = false)
 @ConditionalOnProperty(name = "orderflow.messaging.rabbit.enabled", havingValue = "true")
@@ -86,14 +90,25 @@ public class RabbitMessagingConfig {
     }
 
     @Bean
-    MessageConverter rabbitJsonMessageConverter() {
-        return new JacksonJsonMessageConverter("com.start.overflow");
+    MessageConverter rabbitJsonMessageConverter(ObjectMapper objectMapper) {
+        return new Jackson2JsonMessageConverter(objectMapper, "com.start.overflow");
     }
 
     @Bean
-    RabbitListenerRetrySettingsCustomizer rabbitListenerRetrySettingsCustomizer() {
-        return settings -> settings.setExceptionPredicate(
-                RabbitMessagingConfig::isRetryable);
+    RabbitRetryTemplateCustomizer rabbitRetryTemplateCustomizer() {
+        return (target, retryTemplate) -> {
+            if (target == RabbitRetryTemplateCustomizer.Target.LISTENER) {
+                retryTemplate.registerListener(new RetryListener() {
+                    @Override
+                    public <T, E extends Throwable> void onError(
+                            RetryContext context, RetryCallback<T, E> callback, Throwable failure) {
+                        if (!isRetryable(failure)) {
+                            context.setExhaustedOnly();
+                        }
+                    }
+                });
+            }
+        };
     }
 
     @Bean

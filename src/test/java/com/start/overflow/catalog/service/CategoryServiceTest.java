@@ -16,6 +16,7 @@ import org.mockito.junit.jupiter.MockitoExtension;
 
 import java.util.Optional;
 
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.never;
@@ -24,17 +25,19 @@ import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
 class CategoryServiceTest {
-    @Mock CategoryRepository repository;
-    @Mock CategoryMapper mapper;
+    @Mock
+    CategoryRepository repository;
+    @Mock
+    CategoryMapper mapper;
     private CategoryService service;
 
     @BeforeEach
-    void setUp() {
+    void configurarCenario() {
         service = new CategoryService(repository, mapper);
     }
 
     @Test
-    void refusesDuplicateSlugBeforeWriting() {
+    void deveRecusarCriacao_quandoSlugEstiverDuplicado() {
         when(repository.existsBySlug("eletronicos")).thenReturn(true);
 
         assertThatThrownBy(() -> service.create(new CreateCategoryRequest("Eletrônicos", null)))
@@ -44,20 +47,20 @@ class CategoryServiceTest {
     }
 
     @Test
-    void createsAvailableCategory() {
+    void deveCriarCategoria_quandoSlugEstiverDisponivel() {
         Category category = new Category("Casa", null);
-        CategoryResponse response = new CategoryResponse(null, "Casa", "casa", null,
-                true, null, null);
+        CategoryResponse response = response("Casa", "casa", true);
         when(repository.saveAndFlush(any(Category.class))).thenReturn(category);
         when(mapper.toResponse(category)).thenReturn(response);
 
-        service.create(new CreateCategoryRequest("Casa", null));
+        CategoryResponse result = service.create(new CreateCategoryRequest("Casa", null));
 
+        assertThat(result).isSameAs(response);
         verify(repository).saveAndFlush(any(Category.class));
     }
 
     @Test
-    void refusesSlugCollisionOnUpdate() {
+    void deveRecusarAtualizacao_quandoSlugColidirComOutraCategoria() {
         Category category = new Category("Casa", null);
         when(repository.findById(1L)).thenReturn(Optional.of(category));
         when(repository.existsBySlugAndIdNot("eletronicos", 1L)).thenReturn(true);
@@ -65,13 +68,55 @@ class CategoryServiceTest {
         assertThatThrownBy(() -> service.update(1L,
                 new UpdateCategoryRequest("Eletrônicos", null)))
                 .isInstanceOf(BusinessRuleException.class);
+        verify(repository, never()).flush();
     }
 
     @Test
-    void reportsMissingCategory() {
+    void deveManterCategoria_quandoRenomearParaMesmoNome() {
+        Category category = new Category("Casa", null);
+        CategoryResponse response = response("Casa", "casa", true);
+        when(repository.findById(1L)).thenReturn(Optional.of(category));
+        when(mapper.toResponse(category)).thenReturn(response);
+
+        CategoryResponse result = service.update(1L, new UpdateCategoryRequest("Casa", null));
+
+        assertThat(result).isSameAs(response);
+        assertThat(category.getSlug()).isEqualTo("casa");
+        verify(repository).flush();
+    }
+
+    @Test
+    void deveInformarAusencia_quandoCategoriaNaoExistir() {
         when(repository.findById(99L)).thenReturn(Optional.empty());
 
         assertThatThrownBy(() -> service.findById(99L))
                 .isInstanceOf(ResourceNotFoundException.class);
+    }
+
+    @Test
+    void deveAtivarCategoria_quandoCategoriaExistir() {
+        Category category = new Category("Casa", null);
+        category.deactivate();
+        when(repository.findById(1L)).thenReturn(Optional.of(category));
+        when(mapper.toResponse(category)).thenReturn(response("Casa", "casa", true));
+
+        service.activate(1L);
+
+        assertThat(category.getActive()).isTrue();
+    }
+
+    @Test
+    void deveDesativarCategoria_quandoCategoriaExistir() {
+        Category category = new Category("Casa", null);
+        when(repository.findById(1L)).thenReturn(Optional.of(category));
+        when(mapper.toResponse(category)).thenReturn(response("Casa", "casa", false));
+
+        service.deactivate(1L);
+
+        assertThat(category.getActive()).isFalse();
+    }
+
+    private CategoryResponse response(String name, String slug, boolean active) {
+        return new CategoryResponse(1L, name, slug, null, active, null, null);
     }
 }
