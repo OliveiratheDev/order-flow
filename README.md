@@ -37,12 +37,12 @@ Ports & Adapters e testes com PostgreSQL e Redis reais via Testcontainers.
 
 | Área | Tecnologias |
 |---|---|
-| Runtime | Java 21, Spring Boot 4.1, Maven Wrapper |
+| Runtime | Java 21, Spring Boot 3.5.16, Maven Wrapper |
 | API | Spring MVC, Validation, Springdoc OpenAPI |
 | Segurança | Spring Security, OAuth2 Resource Server, JWT HS256, BCrypt |
 | Persistência | Spring Data JPA, Hibernate, PostgreSQL 16, Flyway |
 | Estado distribuído | Redis 7 para idempotência e cache |
-| Mensageria | RabbitMQ 3.13, Spring AMQP 4.1, JSON e Dead Letter Queue |
+| Mensageria | RabbitMQ 3.13, Spring AMQP, JSON e Dead Letter Queue |
 | Resiliência | Resilience4j 2.4 para timeout, retry, circuit breaker e métricas |
 | Agendamento | Spring Scheduling e ShedLock 7.7 com lock no PostgreSQL |
 | Mapeamento | MapStruct; Lombok usado de forma conservadora |
@@ -64,7 +64,7 @@ flowchart LR
     gateway["Sistema externo: Asaas ou gateway genérico"]
 
     subgraph boundary["Sistema OrderFlow"]
-        api["Contêiner: OrderFlow API<br/>Java 21 + Spring Boot 4.1<br/>REST, regras e casos de uso"]
+        api["Contêiner: OrderFlow API<br/>Java 21 + Spring Boot 3.5.16<br/>REST, regras e casos de uso"]
         postgres[("Contêiner: PostgreSQL 16<br/>catálogo, usuários, pedidos e pagamentos")]
         redis[("Contêiner: Redis 7<br/>idempotência e cache")]
         rabbit[("Contêiner: RabbitMQ<br/>eventos, filas e DLQ")]

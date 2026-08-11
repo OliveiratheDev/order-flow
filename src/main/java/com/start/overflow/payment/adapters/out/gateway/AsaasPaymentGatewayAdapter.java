@@ -1,5 +1,6 @@
 package com.start.overflow.payment.adapters.out.gateway;
 
+import com.fasterxml.jackson.annotation.JsonFormat;
 import com.start.overflow.payment.domain.ChargeRequest;
 import com.start.overflow.payment.domain.GatewayChargeResult;
 import com.start.overflow.payment.domain.GatewayChargeStatus;
@@ -488,7 +489,7 @@ public class AsaasPaymentGatewayAdapter implements PaymentGatewayPort {
             String customer,
             String billingType,
             BigDecimal value,
-            LocalDate dueDate,
+            @JsonFormat(shape = JsonFormat.Shape.STRING, pattern = "yyyy-MM-dd") LocalDate dueDate,
             String description,
             String externalReference
     ) {

@@ -2,6 +2,8 @@ package com.start.overflow;
 
 import com.start.overflow.identity.service.UserService;
 import io.micrometer.core.instrument.MeterRegistry;
+import jakarta.persistence.EntityManagerFactory;
+import org.hibernate.SessionFactory;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
@@ -10,7 +12,8 @@ import org.junit.jupiter.params.provider.MethodSource;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.testcontainers.service.connection.ServiceConnection;
-import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
+import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
+import org.springframework.boot.test.autoconfigure.actuate.observability.AutoConfigureObservability;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.test.context.DynamicPropertyRegistry;
@@ -23,8 +26,8 @@ import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
 import org.testcontainers.postgresql.PostgreSQLContainer;
 import org.testcontainers.utility.DockerImageName;
-import tools.jackson.databind.JsonNode;
-import tools.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
 
 import java.time.Duration;
 import java.math.BigDecimal;
@@ -47,9 +50,11 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 
 @SpringBootTest(properties = {
         "orderflow.security.jwt.secret=test-secret-with-at-least-thirty-two-bytes",
-        "orderflow.bootstrap.admin.enabled=false"
+        "orderflow.bootstrap.admin.enabled=false",
+        "spring.jpa.properties.hibernate.generate_statistics=true"
 })
 @AutoConfigureMockMvc
+@AutoConfigureObservability
 @Testcontainers(disabledWithoutDocker = true)
 class ApplicationHttpIntegrationTest {
     private static final String ADMIN_EMAIL = "admin@example.com";
@@ -77,6 +82,7 @@ class ApplicationHttpIntegrationTest {
     @Autowired StringRedisTemplate redis;
     @Autowired UserService userService;
     @Autowired MeterRegistry meterRegistry;
+    @Autowired EntityManagerFactory entityManagerFactory;
 
     @BeforeEach
     void resetState() {
@@ -260,6 +266,39 @@ class ApplicationHttpIntegrationTest {
     }
 
     @Test
+    void deveUsarCacheEInvalidar_quandoCategoriaForAtualizada() throws Exception {
+        String adminToken = token(login(ADMIN_EMAIL, ADMIN_PASSWORD));
+        long categoryId = id(mockMvc.perform(withToken(postJson("/api/v1/categories", """
+                        {"name":"Cache Original"}
+                        """), adminToken))
+                .andExpect(status().isCreated())
+                .andReturn());
+        String cacheKey = "categories::" + categoryId;
+        SessionFactory sessionFactory = entityManagerFactory.unwrap(SessionFactory.class);
+
+        mockMvc.perform(get("/api/v1/categories/{id}", categoryId))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.name").value("Cache Original"));
+        String cachedJson = redis.opsForValue().get(cacheKey);
+        assertThat(cachedJson).contains("Cache Original");
+
+        sessionFactory.getStatistics().clear();
+        mockMvc.perform(get("/api/v1/categories/{id}", categoryId))
+                .andExpect(status().isOk());
+        assertThat(sessionFactory.getStatistics().getPrepareStatementCount()).isZero();
+
+        mockMvc.perform(withToken(putJson("/api/v1/categories/" + categoryId, """
+                        {"name":"Cache Atualizado"}
+                        """), adminToken))
+                .andExpect(status().isOk());
+        assertThat(redis.hasKey(cacheKey)).isFalse();
+
+        mockMvc.perform(get("/api/v1/categories/{id}", categoryId))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.name").value("Cache Atualizado"));
+    }
+
+    @Test
     void actuatorExposesOnlyOperationalEndpoints() throws Exception {
         String adminToken = token(login(ADMIN_EMAIL, ADMIN_PASSWORD));
         meterRegistry.get("orderflow.orders.created")
@@ -376,7 +415,7 @@ class ApplicationHttpIntegrationTest {
                 .andExpect(status().isCreated())
                 .andReturn());
         mockMvc.perform(withToken(patch("/api/v1/orders/{id}/ship", orderId), adminToken))
-                .andExpect(status().isUnprocessableContent())
+                .andExpect(status().isUnprocessableEntity())
                 .andExpect(jsonPath("$.type").value("https://orderflow.dev/errors/invalid-transition"));
         mockMvc.perform(withToken(postJson("/api/v1/payments", """
                         {"orderId":999,"method":"PIX"}
@@ -451,7 +490,7 @@ class ApplicationHttpIntegrationTest {
     }
 
     private String token(MvcResult result) throws Exception {
-        return json(result).get("accessToken").stringValue();
+        return json(result).get("accessToken").textValue();
     }
 
     private long id(MvcResult result) throws Exception {

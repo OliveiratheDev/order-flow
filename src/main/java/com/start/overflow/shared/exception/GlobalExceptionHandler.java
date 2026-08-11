@@ -41,7 +41,7 @@ public class GlobalExceptionHandler {
     @ExceptionHandler(InvalidTransitionException.class)
     public ProblemDetail handleInvalidTransition(InvalidTransitionException ex,
                                                   HttpServletRequest request) {
-        return buildProblemDetail(HttpStatus.UNPROCESSABLE_CONTENT, "/errors/invalid-transition",
+        return buildProblemDetail(HttpStatus.UNPROCESSABLE_ENTITY, "/errors/invalid-transition",
                 "Transição de estado inválida", ex.getMessage(), request);
     }
 
@@ -68,7 +68,7 @@ public class GlobalExceptionHandler {
     @ExceptionHandler(IdempotencyPayloadMismatchException.class)
     public ProblemDetail handleIdempotencyPayloadMismatch(IdempotencyPayloadMismatchException ex,
                                                           HttpServletRequest request) {
-        return buildProblemDetail(HttpStatus.UNPROCESSABLE_CONTENT,
+        return buildProblemDetail(HttpStatus.UNPROCESSABLE_ENTITY,
                 "/errors/idempotency-payload-mismatch",
                 "Chave reutilizada com outro conteúdo", ex.getMessage(), request);
     }

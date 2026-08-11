@@ -1,6 +1,7 @@
 package com.start.overflow.identity.security;
 
 import com.start.overflow.shared.observability.AuthenticatedUserMdcFilter;
+import com.nimbusds.jose.jwk.source.ImmutableSecret;
 import org.springframework.boot.web.servlet.FilterRegistrationBean;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -106,9 +107,7 @@ public class SecurityConfig {
 
     @Bean
     JwtEncoder jwtEncoder(SecretKey secretKey) {
-        return NimbusJwtEncoder.withSecretKey(secretKey)
-                .algorithm(MacAlgorithm.HS256)
-                .build();
+        return new NimbusJwtEncoder(new ImmutableSecret<>(secretKey));
     }
 
     @Bean

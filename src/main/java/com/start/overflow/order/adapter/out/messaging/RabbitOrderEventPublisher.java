@@ -104,8 +104,8 @@ public class RabbitOrderEventPublisher {
 
             CorrelationData.Confirm confirm = correlation.getFuture().get(
                     confirmTimeout.toMillis(), TimeUnit.MILLISECONDS);
-            if (!confirm.ack()) {
-                throw new IllegalStateException("Publicação não confirmada: " + confirm.reason());
+            if (!confirm.isAck()) {
+                throw new IllegalStateException("Publicação não confirmada: " + confirm.getReason());
             }
             if (correlation.getReturned() != null) {
                 throw new IllegalStateException("Mensagem não roteada pelo broker");
